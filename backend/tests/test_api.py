@@ -4,6 +4,15 @@ def test_health(client):
     r=client.get("/api/health"); assert r.status_code==200; assert r.json()["status"]=="ok"
 
 
+def test_swagger_assets_are_allowed_by_content_security_policy(client):
+    response = client.get("/api/docs")
+    assert response.status_code == 200
+    assert "swagger-ui" in response.text.lower()
+    csp = response.headers["content-security-policy"]
+    assert "script-src 'self' https://api.mapbox.com https://cdn.jsdelivr.net" in csp
+    assert "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net" in csp
+
+
 def test_frontend_pages_are_directly_accessible(client):
     for path in (
         "/",

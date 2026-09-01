@@ -1016,7 +1016,7 @@ function bindEvents(): void {
         }),
       });
       showMessage("Un e-mail de confirmation est requis (double opt-in).", "success");
-      console.info("Lien de confirmation pour la démo", response.confirmation_path);
+      console.info("Lien de confirmation en environnement local", response.confirmation_path);
     } catch (error) {
       showMessage((error as Error).message, "error");
     }

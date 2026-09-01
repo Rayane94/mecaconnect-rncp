@@ -73,6 +73,45 @@ SERVICE_CATALOG = {
     "echappement": ("Contrôle échappement", "Recherche de fuite et contrôle de la ligne d'échappement.", 59.0, 35),
 }
 
+SPECIALTY_LABELS = {
+    "entretien": "l'entretien courant",
+    "freinage": "le freinage",
+    "diagnostic": "le diagnostic électronique",
+    "pneus": "les pneumatiques",
+    "geometrie": "la géométrie",
+    "suspension": "les trains roulants",
+    "electricite": "l'électricité automobile",
+    "batterie": "les batteries et circuits de charge",
+    "hybride": "les motorisations hybrides",
+    "electrique": "les véhicules électriques",
+    "moteur": "la mécanique moteur",
+    "distribution": "la distribution",
+    "refroidissement": "le refroidissement moteur",
+    "diesel": "les motorisations diesel",
+    "fap": "les systèmes FAP",
+    "injection": "l'injection",
+    "embrayage": "l'embrayage",
+    "transmission": "la transmission",
+    "climatisation": "la climatisation",
+    "echappement": "l'échappement",
+}
+
+
+def garage_description(data: dict) -> str:
+    specialties = [
+        SPECIALTY_LABELS[item]
+        for item in data["specialties"].split(",")[:3]
+        if item in SPECIALTY_LABELS
+    ]
+    if len(specialties) > 1:
+        expertise = ", ".join(specialties[:-1]) + f" et {specialties[-1]}"
+    else:
+        expertise = specialties[0] if specialties else "la mécanique automobile"
+    return (
+        f"Atelier situé à {data['city']}, spécialisé dans {expertise}. "
+        "Consultez les prestations, les tarifs et les prochains créneaux disponibles en ligne."
+    )
+
 
 def ensure_user(db, email: str, password: str, full_name: str, role: str) -> User:
     user = db.scalar(select(User).where(User.email == email))
@@ -152,7 +191,7 @@ def run() -> None:
             db,
             "garage@mecaconnect.example.com",
             os.getenv("GARAGE_SEED_PASSWORD", "Garage-ChangeMe-2026!"),
-            "Garage Démo",
+            "Garage Berthier",
             "GARAGE",
         )
 
@@ -161,10 +200,7 @@ def run() -> None:
             if not garage:
                 garage = Garage(
                     owner_id=garage_user.id if data["slug"] == "garage-berthier" else None,
-                    description=(
-                        "Garage partenaire de démonstration MecaConnect en Île-de-France. "
-                        "Localisation indicative pour le prototype et spécialités déclarées dans le catalogue."
-                    ),
+                    description=garage_description(data),
                     verified=True,
                     **data,
                 )
@@ -173,6 +209,7 @@ def run() -> None:
             else:
                 for key, value in data.items():
                     setattr(garage, key, value)
+                garage.description = garage_description(data)
 
             add_services(db, garage)
             add_slots(db, garage)

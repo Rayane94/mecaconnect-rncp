@@ -62,7 +62,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
-# Limiteur volontairement simple pour le prototype : 120 requêtes par minute et par IP.
+# Limitation applicative : 120 requêtes par minute et par adresse IP.
 request_history: dict[str, deque[float]] = defaultdict(deque)
 
 
@@ -88,8 +88,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "img-src 'self' data: https:; "
-        "style-src 'self' 'unsafe-inline' https://api.mapbox.com; "
-        "script-src 'self' https://api.mapbox.com; "
+        "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net; "
+        "script-src 'self' https://api.mapbox.com https://cdn.jsdelivr.net; "
         "connect-src 'self' https://*.mapbox.com https://api.stripe.com; "
         "worker-src 'self' blob:; "
         "child-src blob:"
@@ -110,7 +110,7 @@ def add_audit_log(
     resource: str | None = None,
     detail: str | None = None,
 ) -> None:
-    """Enregistre une action utile pour les contrôles et le suivi du prototype."""
+    """Enregistre une action utile pour les contrôles et le suivi de l'application."""
     db.add(
         models.AuditLog(
             user_id=user_id,
