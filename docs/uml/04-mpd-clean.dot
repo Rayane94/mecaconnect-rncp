@@ -1,0 +1,24 @@
+digraph G {
+  graph [rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.3, ranksep=0.7];
+  node [shape=box, fontname="Arial", fontsize=9, color="#444444", fontcolor="#111111", margin=0.12];
+  edge [color="#666666", arrowsize=0.7];
+
+  users [label="users\nPK id\nemail UNIQUE\npassword_hash\nrole\nphone_encrypted"];
+  vehicles [label="vehicles\nPK id\nFK owner_id (users)\nmake\nmodel\nyear\nplate"];
+  garages [label="garages\nPK id\nFK owner_id (users)\nslug UNIQUE\ncity\nverified\nrating"];
+  services [label="services\nPK id\nFK garage_id (garages)\nname\nprice\nduration_minutes"];
+  availability [label="availability\nPK id\nFK garage_id (garages)\nstarts_at\nends_at\nis_booked\nUNIQUE garage_id + starts_at"];
+  bookings [label="bookings\nPK id\nFK user_id (users)\nFK service_id (services)\nFK slot_id (availability) UNIQUE\nstatus\ntotal_amount\ndeposit_amount"];
+  payments [label="payments\nPK id\nFK booking_id UNIQUE\nprovider\nprovider_reference\namount\nstatus"];
+  reviews [label="reviews\nPK id\nFK user_id\nFK garage_id\nFK booking_id UNIQUE\nrating\ncomment"];
+
+  users -> vehicles;
+  users -> bookings;
+  users -> garages;
+  garages -> services;
+  garages -> availability;
+  services -> bookings;
+  availability -> bookings;
+  bookings -> payments;
+  bookings -> reviews;
+}

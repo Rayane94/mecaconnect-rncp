@@ -1,0 +1,113 @@
+
+> test
+> npm run build && node --test --experimental-test-coverage tests/*.test.mjs
+
+
+> build
+> tsc -p tsconfig.json
+
+TAP version 13
+# Subtest: normalization and garage filtering
+ok 1 - normalization and garage filtering
+  ---
+  duration_ms: 0.841736
+  type: 'test'
+  ...
+# Subtest: deposit calculation
+ok 2 - deposit calculation
+  ---
+  duration_ms: 0.120497
+  type: 'test'
+  ...
+# Subtest: password policy
+ok 3 - password policy
+  ---
+  duration_ms: 0.23842
+  type: 'test'
+  ...
+# Subtest: safe text removes angle brackets
+ok 4 - safe text removes angle brackets
+  ---
+  duration_ms: 0.131813
+  type: 'test'
+  ...
+# Subtest: slots are sorted chronologically
+ok 5 - slots are sorted chronologically
+  ---
+  duration_ms: 0.38821
+  type: 'test'
+  ...
+# Subtest: price formatter uses EUR
+ok 6 - price formatter uses EUR
+  ---
+  duration_ms: 11.946627
+  type: 'test'
+  ...
+# Subtest: HTML language and responsive viewport are declared
+ok 7 - HTML language and responsive viewport are declared
+  ---
+  duration_ms: 0.873163
+  type: 'test'
+  ...
+# Subtest: main SEO metadata and canonical are present
+ok 8 - main SEO metadata and canonical are present
+  ---
+  duration_ms: 0.171222
+  type: 'test'
+  ...
+# Subtest: Open Graph metadata are present
+ok 9 - Open Graph metadata are present
+  ---
+  duration_ms: 0.09525
+  type: 'test'
+  ...
+# Subtest: semantic landmarks and skip link exist
+ok 10 - semantic landmarks and skip link exist
+  ---
+  duration_ms: 0.151402
+  type: 'test'
+  ...
+# Subtest: forms expose labels and status region
+ok 11 - forms expose labels and status region
+  ---
+  duration_ms: 0.099927
+  type: 'test'
+  ...
+# Subtest: cookie consent and privacy access are present
+ok 12 - cookie consent and privacy access are present
+  ---
+  duration_ms: 0.131243
+  type: 'test'
+  ...
+# Subtest: role-specific dashboard and booking dialog exist
+ok 13 - role-specific dashboard and booking dialog exist
+  ---
+  duration_ms: 0.085465
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 79.690429
+# start of coverage report
+# --------------------------------------------------------------------------
+# file                      | line % | branch % | funcs % | uncovered lines
+# --------------------------------------------------------------------------
+# public                    |        |          |         | 
+#  lib.js                   |  94.74 |    93.33 |  100.00 | 25-26
+# tests                     |        |          |         | 
+#  lib.test.mjs             | 100.00 |   100.00 |  100.00 | 
+#  static-contract.test.mjs | 100.00 |    90.00 |  100.00 | 
+# --------------------------------------------------------------------------
+# all files                 |  97.70 |    93.75 |  100.00 | 
+# --------------------------------------------------------------------------
+# end of coverage report
+
+> build
+> tsc -p tsconfig.json
+

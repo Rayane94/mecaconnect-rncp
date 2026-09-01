@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MecaConnect - Réservez votre garage en ligne</title>
+  <meta name="description" content="Trouvez un garage, comparez les prestations automobiles, choisissez un créneau et réservez votre intervention avec un acompte sécurisé.">
+  <meta name="keywords" content="garage, entretien automobile, réservation garage, vidange, freinage, diagnostic auto">
+  <meta name="robots" content="index,follow">
+  <meta name="mapbox-token" content="__MAPBOX_TOKEN__">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="MecaConnect - Réservez votre garage en ligne">
+  <meta property="og:description" content="Recherche de garages, disponibilités, réservation et acompte en ligne.">
+  <meta property="og:url" content="__APP_BASE_URL__/">
+  <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="__APP_BASE_URL__/">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.css" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"MecaConnect","url":"__APP_BASE_URL__/","potentialAction":{"@type":"SearchAction","target":"__APP_BASE_URL__/?q={search_term_string}","query-input":"required name=search_term_string"}}</script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.js" defer></script>
+  <script type="module" src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="MecaConnect accueil"><span class="logo-mark">MC</span><span>MecaConnect</span></a>
+    <nav aria-label="Navigation principale">
+      <a href="#assistant">MecaBot</a><a href="#garages">Garages</a><a href="#how">Comment ça marche</a><a href="#pro">Professionnels</a>
+      <button id="dashboard-label" class="nav-button" hidden>Mon espace</button>
+      <button id="account-label" class="nav-button">Connexion</button><button id="logout" class="nav-button muted" hidden>Déconnexion</button>
+    </nav>
+  </header>
+  <main id="main">
+    <section class="hero">
+      <div><p class="eyebrow">ENTRETIEN AUTO, SANS APPELER PARTOUT</p><h1>Le bon garage, le bon créneau, en quelques minutes.</h1><p class="lead">Recherchez une prestation, consultez les disponibilités et réservez avec un acompte sécurisé.</p>
+      <form id="search-form" class="search-card" aria-label="Rechercher un garage"><label>Que recherchez-vous ?<input id="q" placeholder="Vidange, freinage, diagnostic..." autocomplete="off"></label><label>Ville<select id="city"><option value="">Toutes les villes</option><option>Paris</option></select></label><button class="btn" type="submit">Rechercher</button></form></div>
+      <div class="hero-visual" aria-hidden="true"><div class="car-card"><span class="car-icon">AUTO</span><strong>3 étapes</strong><span>Rechercher</span><span>Choisir</span><span>Réserver</span></div></div>
+    </section>
+    <section id="assistant" class="section assistant-section">
+      <div class="section-head">
+        <div><p class="eyebrow">MECABOT - ASSISTANT AUTO</p><h2>Décrivez votre problème, MecaBot vous oriente.</h2></div>
+        <span class="trust">Pré-diagnostic indicatif + garages adaptés</span>
+      </div>
+      <div class="assistant-layout">
+        <aside class="assistant-profile panel">
+          <h3>Votre véhicule</h3>
+          <label>Marque<input id="assistant-make" placeholder="Mercedes, Renault..."></label>
+          <label>Modèle<input id="assistant-model" placeholder="CLA 200, Clio..."></label>
+          <label>Année<input id="assistant-year" type="number" min="1950" max="2100" placeholder="2021"></label>
+          <label>Votre zone<input id="assistant-location" placeholder="Paris, 92, Créteil..."></label>
+          <p class="microcopy">Ces informations servent uniquement à affiner l'estimation et le classement des ateliers.</p>
+        </aside>
+        <div class="assistant-chat panel">
+          <div id="assistant-messages" class="assistant-messages" aria-live="polite">
+            <div class="chat-message bot"><strong>MecaBot</strong><p>Bonjour. Décrivez-moi précisément ce que fait la voiture : bruit, voyant, vibration, démarrage, freinage, fumée, perte de puissance… Je vais identifier les pistes les plus probables, estimer une fourchette et chercher les garages les plus adaptés en Île-de-France.</p></div>
+          </div>
+          <div class="quick-prompts" aria-label="Exemples de symptômes">
+            <button type="button" data-assistant-prompt="J'ai un voyant moteur et une perte de puissance">Voyant moteur</button>
+            <button type="button" data-assistant-prompt="Mes freins grincent et la pédale semble moins efficace">Freinage</button>
+            <button type="button" data-assistant-prompt="La voiture chauffe et le niveau de liquide de refroidissement baisse">Surchauffe</button>
+            <button type="button" data-assistant-prompt="Ma voiture diesel affiche un défaut FAP">FAP / diesel</button>
+          </div>
+          <form id="assistant-form" class="assistant-form">
+            <label class="sr-only" for="assistant-message">Décrivez le problème</label>
+            <textarea id="assistant-message" rows="3" required placeholder="Ex. : depuis hier j'entends un claquement à l'avant quand je tourne à faible vitesse..."></textarea>
+            <button class="btn" type="submit">Analyser mon problème</button>
+          </form>
+          <p class="assistant-warning">MecaBot fournit un pré-diagnostic et une estimation indicative. En cas de voyant rouge, surchauffe, perte importante de freinage ou comportement dangereux, immobilisez le véhicule et faites appel à un professionnel.</p>
+        </div>
+      </div>
+    </section>
+    <section id="garages" class="section"><div class="section-head"><div><p class="eyebrow">GARAGES PARTENAIRES</p><h2>Des professionnels disponibles partout en Île-de-France</h2><p class="microcopy">Catalogue de démonstration : les noms et localisations sont fictifs ou indicatifs pour le prototype RNCP.</p></div><span class="trust">✓ 31 ateliers de démonstration</span></div><div class="garage-map-layout"><div><div id="garage-grid" class="garage-grid" aria-live="polite"></div></div><aside class="map-panel"><div id="garage-map" role="img" aria-label="Carte des garages MecaConnect en Île-de-France"></div><p id="map-status" class="microcopy">La carte interactive s'active avec le token Mapbox du projet.</p></aside></div></section>
+    <section id="garage-detail" class="section detail" hidden><p class="eyebrow">FICHE GARAGE</p><h2 id="garage-name"></h2><p id="garage-address"></p><div id="service-list"></div></section>
+    <section id="dashboard" class="section dashboard" hidden aria-labelledby="dashboard-title"><div class="section-head"><div><p class="eyebrow">ESPACE PERSONNEL</p><h2 id="dashboard-title">Mon espace</h2></div><span id="dashboard-role" class="trust"></span></div><div id="dashboard-content"></div></section>
+    <section id="how" class="section alt"><p class="eyebrow">PARCOURS</p><h2>Une réservation simple et vérifiable</h2><div class="steps"><article><span>01</span><h3>Recherchez</h3><p>Choisissez une ville et la prestation adaptée à votre véhicule.</p></article><article><span>02</span><h3>Réservez</h3><p>Sélectionnez un créneau disponible réellement proposé par le garage.</p></article><article><span>03</span><h3>Confirmez</h3><p>Versez un acompte en mode sécurisé puis retrouvez le rendez-vous dans votre compte.</p></article></div></section>
+    <section id="pro" class="section pro"><div><p class="eyebrow">ESPACE PROFESSIONNEL</p><h2>Un agenda plus clair pour le garage</h2><p>Prestations, prix, créneaux et rendez-vous sont gérés depuis le même espace. Les comptes professionnels bénéficient d'une authentification renforcée.</p></div><a class="btn secondary" href="/api/docs">Voir l'API documentée</a></section>
+    <section class="section newsletter"><div><h2>Conseils entretien & nouveautés</h2><p>La newsletter utilise un double opt-in : aucune inscription n'est activée sans confirmation.</p></div><form id="newsletter-form"><label class="sr-only" for="newsletter-email">Adresse e-mail</label><input id="newsletter-email" type="email" required placeholder="vous@exemple.fr"><button class="btn" type="submit">M'inscrire</button></form></section>
+  </main>
+  <footer><div><strong>MecaConnect</strong><p>Projet annuel Full Stack - RNCP 38606.</p></div><div><a href="/assets/privacy.html">Politique de confidentialité</a><button id="cookie-settings" class="link-button">Préférences cookies</button></div></footer>
+  <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="auth-dialog"><button id="close-auth" class="dialog-close" aria-label="Fermer">×</button><div class="auth-grid"><form id="login-form"><h2>Connexion</h2><label>E-mail<input id="login-email" type="email" required></label><label>Mot de passe<input id="login-password" type="password" required></label><label>Code 2FA si activé<input id="login-totp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><button class="btn" type="submit">Se connecter</button></form><form id="register-form"><h2>Créer un compte</h2><label>Nom complet<input id="reg-name" required></label><label>E-mail<input id="reg-email" type="email" required></label><label>Mot de passe<input id="reg-password" type="password" required minlength="12"><small>12 caractères minimum et au moins 3 catégories.</small></label><button class="btn secondary" type="submit">Créer mon compte</button></form></div></dialog>
+
+  <dialog id="booking-dialog"><button id="close-booking" class="dialog-close" aria-label="Fermer">×</button><form id="booking-form"><p class="eyebrow">RÉSERVATION</p><h2 id="booking-title">Choisir un créneau</h2><p id="booking-summary"></p><label>Véhicule<select id="booking-vehicle"><option value="">Sans véhicule associé</option></select></label><label>Créneau<select id="booking-slot" required></select></label><div class="booking-total"><span>Acompte à régler</span><strong id="booking-deposit">-</strong></div><button class="btn" type="submit">Confirmer et payer l'acompte</button></form></dialog>
+
+  <dialog id="cookie-dialog"><h2>Vos préférences de confidentialité</h2><p>Les cookies nécessaires permettent le fonctionnement du compte. Les mesures d'audience restent désactivées tant que vous ne les acceptez pas.</p><div class="dialog-actions"><button id="cookies-refuse" class="btn secondary">Nécessaires uniquement</button><button id="cookies-accept" class="btn">Accepter les statistiques</button></div></dialog>
+</body>
+</html>

@@ -1,0 +1,4 @@
+
+digraph G { graph [rankdir=LR,bgcolor="white",pad=.4]; node [shape=box,fontname="Arial",fontsize=10,style=filled,fillcolor="#f7f7f7"]; edge [fontname="Arial",fontsize=9]; U[label="Utilisateur"]; F[label="Front TypeScript"]; A[label="API FastAPI"]; D[label="SQLAlchemy / BDD"]; P[label="Stripe Test"];
+U->F[label="choisit prestation + créneau"]; F->A[label="POST /api/bookings"]; A->D[label="vérifie créneau non réservé"]; D->A[label="OK"]; A->D[label="crée réservation + verrouille créneau"]; A->F[label="booking + acompte 20 %"]; F->A[label="POST /payments/{id}/session"]; A->P[label="crée Checkout Session (sk_test_)"]; P->A[label="id + URL Stripe Checkout"]; A->F[label="checkout_url"]; F->P[label="redirection vers Stripe"]; P->A[label="retour session_id"]; A->P[label="GET Checkout Session"]; P->A[label="payment_status=paid"]; A->D[label="Payment SUCCEEDED + Booking CONFIRMED"]; A->F[label="confirmation HTML"];
+}

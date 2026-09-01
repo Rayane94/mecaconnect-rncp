@@ -1,0 +1,12 @@
+Sprint,Titre,Type,Priorité,Estimation,Statut,Critères d'acceptation
+S1,Cadrage et personas,Documentation,Haute,4h,Done,Besoin contexte enjeux utilisateurs définis
+S2,Wireframes principaux,Design,Haute,6h,Done,Accueil recherche détail booking dashboards
+S3,UML MCD MPD architecture,Conception,Haute,7h,Done,Modèles cohérents avec STB
+S4,Socle API et persistance,Backend,Haute,8h,Done,API health BDD seed opérationnels
+S5,Authentification RBAC 2FA,Sécurité,Haute,10h,Done,Inscription login rôles TOTP
+S6,Garages services créneaux,Métier,Haute,10h,Done,CRUD principal et recherche
+S7,Réservation,Fullstack,Haute,10h,Done,Créneau bloqué et réservation persistée
+S8,Paiement test et API tierce,Intégration,Haute,8h,In progress,Paiement Stripe test ou fallback local démontrable
+S9,RGPD accessibilité SEO,Qualité,Haute,8h,In progress,Consentement export double opt-in audits
+S10,Tests CI documentation,Qualité,Haute,10h,In progress,Couverture >=50 build et doc
+S8,MecaBot et carte garages IDF,Fullstack,Haute,12h,Done,Pré-diagnostic estimatif scoring spécialistes 31 garages et carte avec fallback local

@@ -1,0 +1,26 @@
+name: MecaConnect CI
+on: [push, pull_request]
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Backend tests and coverage
+        run: |
+          cd backend
+          PYTHONPATH=. coverage run -m pytest -q
+          coverage report --fail-under=50
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Front install, typecheck, tests and build
+        run: |
+          cd frontend
+          npm install
+          npm run typecheck
+          npm test
+      - name: Python syntax check
+        run: python -m compileall -q backend/app

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <rect width="1400" height="900" fill="#ffffff"/>
+  <rect x="55" y="45" width="1290" height="72" rx="10" fill="#f3f3f3" stroke="#777"/>
+  <text x="85" y="88" font-family="Arial" font-size="28" font-weight="700" fill="#333">MecaConnect</text>
+  <text x="1040" y="88" font-family="Arial" font-size="18" fill="#555">MecaBot · Garages · Mon espace</text>
+
+  <text x="70" y="170" font-family="Arial" font-size="26" font-weight="700" fill="#333">MecaBot - pré-diagnostic</text>
+  <rect x="70" y="205" width="290" height="420" rx="14" fill="#fafafa" stroke="#888" stroke-width="2"/>
+  <text x="95" y="245" font-family="Arial" font-size="20" font-weight="700">Votre véhicule</text>
+  <rect x="95" y="275" width="240" height="48" rx="6" fill="#fff" stroke="#aaa"/><text x="110" y="306" font-family="Arial" font-size="16" fill="#777">Marque</text>
+  <rect x="95" y="340" width="240" height="48" rx="6" fill="#fff" stroke="#aaa"/><text x="110" y="371" font-family="Arial" font-size="16" fill="#777">Modèle</text>
+  <rect x="95" y="405" width="240" height="48" rx="6" fill="#fff" stroke="#aaa"/><text x="110" y="436" font-family="Arial" font-size="16" fill="#777">Année</text>
+  <rect x="95" y="470" width="240" height="48" rx="6" fill="#fff" stroke="#aaa"/><text x="110" y="501" font-family="Arial" font-size="16" fill="#777">Zone / ville</text>
+
+  <rect x="390" y="205" width="640" height="420" rx="14" fill="#fafafa" stroke="#888" stroke-width="2"/>
+  <rect x="420" y="235" width="410" height="85" rx="16" fill="#fff" stroke="#aaa"/>
+  <text x="445" y="268" font-family="Arial" font-size="16" font-weight="700">MecaBot</text>
+  <text x="445" y="295" font-family="Arial" font-size="15" fill="#555">Décrivez le bruit, voyant, vibration ou panne...</text>
+  <rect x="565" y="340" width="430" height="72" rx="16" fill="#e8eef1" stroke="#888"/>
+  <text x="590" y="382" font-family="Arial" font-size="15" fill="#333">“Mes freins grincent et freinent moins bien à chaud”</text>
+  <rect x="420" y="432" width="520" height="118" rx="16" fill="#fff" stroke="#aaa"/>
+  <text x="445" y="465" font-family="Arial" font-size="16" font-weight="700">Pré-diagnostic · urgence · estimation</text>
+  <text x="445" y="495" font-family="Arial" font-size="15" fill="#555">Pistes possibles + fourchette indicative</text>
+  <text x="445" y="522" font-family="Arial" font-size="15" fill="#555">Top garages adaptés avec score et raison</text>
+  <rect x="420" y="565" width="490" height="42" rx="6" fill="#fff" stroke="#aaa"/>
+  <rect x="925" y="565" width="80" height="42" rx="6" fill="#ddd" stroke="#888"/>
+
+  <rect x="1060" y="205" width="285" height="420" rx="14" fill="#fafafa" stroke="#888" stroke-width="2"/>
+  <text x="1085" y="245" font-family="Arial" font-size="20" font-weight="700">Carte IDF</text>
+  <path d="M1115 330 C1160 270 1260 285 1300 350 C1338 415 1300 510 1215 535 C1130 558 1080 492 1097 415 C1105 382 1100 350 1115 330 Z" fill="#eee" stroke="#999" stroke-width="2"/>
+  <g fill="#777">
+    <circle cx="1200" cy="395" r="7"/><circle cx="1170" cy="365" r="7"/><circle cx="1245" cy="355" r="7"/><circle cx="1270" cy="430" r="7"/><circle cx="1150" cy="445" r="7"/><circle cx="1225" cy="480" r="7"/><circle cx="1290" cy="470" r="7"/><circle cx="1130" cy="390" r="7"/>
+  </g>
+  <text x="1090" y="590" font-family="Arial" font-size="14" fill="#666">Pins garages · clic = fiche atelier</text>
+
+  <text x="70" y="700" font-family="Arial" font-size="24" font-weight="700" fill="#333">Résultat recherché</text>
+  <rect x="70" y="735" width="1275" height="105" rx="14" fill="#f8f8f8" stroke="#aaa"/>
+  <text x="95" y="775" font-family="Arial" font-size="17" fill="#444">1. Comprendre le symptôme  →  2. Estimer l'urgence et le coût  →  3. Classer les spécialistes  →  4. Visualiser et réserver</text>
+  <text x="95" y="810" font-family="Arial" font-size="15" fill="#777">Le pré-diagnostic reste indicatif : le devis et la confirmation de panne sont réalisés par le garage.</text>
+</svg>

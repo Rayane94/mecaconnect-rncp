@@ -1,0 +1,8 @@
+
+digraph G { graph [rankdir=LR,bgcolor="white",pad=.4,nodesep=.25,ranksep=.6]; node [shape=ellipse,fontname="Arial",fontsize=10,style=filled,fillcolor="#f7f7f7",color="#777"]; edge [fontname="Arial",fontsize=9,color="#777"];
+  user [shape=box,label="Automobiliste",fillcolor="#e8eef1"]; garage [shape=box,label="Garage",fillcolor="#e8eef1"]; admin [shape=box,label="Administrateur",fillcolor="#e8eef1"]; stripe [shape=box,label="Stripe Test",fillcolor="#fff0e9"];
+  assist [label="Décrire un symptôme / recevoir une orientation"]; search [label="Rechercher un garage"]; map [label="Visualiser les garages sur la carte"]; detail [label="Consulter prestations"]; vehicle [label="Gérer véhicules"]; book [label="Réserver un créneau"]; pay [label="Payer acompte"]; hist [label="Consulter réservations"]; rgpd [label="Exporter / supprimer\nmes données"];
+  profile [label="Gérer profil garage"]; services [label="Gérer prestations"]; slots [label="Gérer disponibilités"]; appointments [label="Gérer rendez-vous"]; twofa [label="Activer 2FA"];
+  stats [label="Consulter statistiques"]; moderate [label="Modérer comptes / garages"]; logs [label="Consulter logs"];
+  user -> {assist search map detail vehicle book pay hist rgpd}; garage -> {profile services slots appointments twofa}; admin -> {stats moderate logs}; pay -> stripe [label="API paiement"];
+}
