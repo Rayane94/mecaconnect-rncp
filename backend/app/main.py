@@ -81,6 +81,12 @@ async def add_security_headers(request: Request, call_next):
     history.append(now)
     response = await call_next(request)
 
+    # Swagger UI initialise son interface avec un script intégré dans /api/docs.
+    # L'exception reste limitée à cette page ; le site public conserve une CSP stricte.
+    script_src = "'self' https://api.mapbox.com https://cdn.jsdelivr.net"
+    if request.url.path == "/api/docs":
+        script_src += " 'unsafe-inline'"
+
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -89,7 +95,7 @@ async def add_security_headers(request: Request, call_next):
         "default-src 'self'; "
         "img-src 'self' data: https:; "
         "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net; "
-        "script-src 'self' https://api.mapbox.com https://cdn.jsdelivr.net; "
+        f"script-src {script_src}; "
         "connect-src 'self' https://*.mapbox.com https://api.stripe.com; "
         "worker-src 'self' blob:; "
         "child-src blob:"

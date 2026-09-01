@@ -9,8 +9,12 @@ def test_swagger_assets_are_allowed_by_content_security_policy(client):
     assert response.status_code == 200
     assert "swagger-ui" in response.text.lower()
     csp = response.headers["content-security-policy"]
-    assert "script-src 'self' https://api.mapbox.com https://cdn.jsdelivr.net" in csp
+    assert "script-src 'self' https://api.mapbox.com https://cdn.jsdelivr.net 'unsafe-inline'" in csp
     assert "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net" in csp
+
+    homepage_csp = client.get("/").headers["content-security-policy"]
+    script_policy = homepage_csp.split("script-src", 1)[1].split(";", 1)[0]
+    assert "unsafe-inline" not in script_policy
 
 
 def test_frontend_pages_are_directly_accessible(client):
