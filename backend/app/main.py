@@ -918,7 +918,9 @@ def admin_stats(
     }
 
 
-FRONT_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public"
+LOCAL_FRONT_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public"
+DOCKER_FRONT_DIR = Path(__file__).resolve().parents[1] / "frontend" / "public"
+FRONT_DIR = DOCKER_FRONT_DIR if DOCKER_FRONT_DIR.exists() else LOCAL_FRONT_DIR
 if FRONT_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONT_DIR)), name="assets")
 
