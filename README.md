@@ -13,6 +13,7 @@ MecaConnect est une application web de réservation de prestations automobiles. 
 - 2FA : TOTP pour les comptes garage et administrateur
 - Paiement : simulation locale en développement, Stripe Checkout en mode Test lorsqu'une clé `sk_test_` est configurée
 - API tierce : Mapbox Geocoding lorsqu'un token public est configuré
+- Assistant : OpenAI Responses API en mode hybride, avec moteur local de secours et garde-fous déterministes
 - Tests : Node Test Runner côté front, Pytest + Coverage côté back
 - Conteneurisation : Docker / Docker Compose
 
@@ -59,8 +60,8 @@ coverage report -m
 
 Lors de la dernière exécution locale :
 
-- 14 tests front réussis ;
-- 52 tests back réussis, dont une suite adversariale dédiée à MecaBot ;
+- 15 tests front, dont un contrat vérifiant les pages dédiées ;
+- 58 tests back, dont une suite adversariale dédiée à MecaBot et à l'intégration OpenAI ;
 - couverture back : 82 % du package `app` ;
 - couverture du moteur `assistant.py` : 89 %.
 
@@ -96,4 +97,4 @@ Le prototype intègre maintenant **MecaBot**, un assistant de pré-diagnostic au
 
 Le catalogue de démonstration contient **31 garages répartis dans les 8 départements d'Île-de-France**. Une carte schématique fonctionne sans service externe et Mapbox active la carte routière interactive dès qu'un `MAPBOX_TOKEN` est configuré.
 
-Endpoint principal : `POST /api/assistant/diagnose`. Le moteur applique d’abord des garde-fous déterministes : hors sujet, texte incompréhensible, injection de prompt, demandes dangereuses, symptômes critiques, ambiguïtés et historique parasite sont traités avant toute estimation. Documentation détaillée : `docs/mecabot.md`.
+Endpoint principal : `POST /api/assistant/diagnose`. Le moteur applique d’abord des garde-fous déterministes : hors sujet, texte incompréhensible, injection de prompt, demandes dangereuses, symptômes critiques, ambiguïtés et historique parasite sont traités avant tout appel externe. Lorsque `OPENAI_API_KEY` est configurée, OpenAI enrichit uniquement l'explication structurée ; l'urgence ne peut pas être abaissée et les prix comme les garages restent calculés localement. Sans clé ou en cas d'indisponibilité, le moteur local répond automatiquement. État de l'intégration : `GET /api/assistant/status`. Documentation détaillée : `docs/mecabot.md`.

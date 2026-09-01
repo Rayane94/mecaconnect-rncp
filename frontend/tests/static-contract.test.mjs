@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const html=readFileSync(new URL('../public/index.html', import.meta.url),'utf8');
 const privacy=readFileSync(new URL('../public/privacy.html', import.meta.url),'utf8');
+const appSource=readFileSync(new URL('../src/app.ts', import.meta.url),'utf8');
 
 test('HTML language and responsive viewport are declared',()=>{
   assert.match(html,/<html lang="fr">/);
@@ -37,6 +38,19 @@ test('role-specific dashboard and booking dialog exist',()=>{
   assert.match(html,/id="dashboard"/);
   assert.match(html,/id="booking-dialog"/);
   assert.match(html,/id="booking-slot"/);
+});
+
+test('main features use dedicated browser routes',()=>{
+  for(const route of ['/mecabot','/garages']) {
+    assert.ok(html.includes(route));
+  }
+  for(const route of ['/connexion','/mon-espace','/espace-garage','/admin']) {
+    assert.ok(appSource.includes(route));
+  }
+  assert.match(html,/data-page="assistant"/);
+  assert.match(html,/data-page="garages"/);
+  assert.match(html,/data-page="dashboard"/);
+  assert.doesNotMatch(html,/id="auth-dialog"/);
 });
 
 test('MecaBot assistant and IDF map are present',()=>{

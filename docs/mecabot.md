@@ -32,10 +32,10 @@ Avant de chercher une panne, MecaBot passe chaque message dans une couche de con
 - **Estimation bornée** : les prix proviennent de fourchettes par famille d'intervention ; ils sont toujours présentés comme indicatifs et ne constituent jamais un devis.
 - **Aucun diagnostic définitif** : les causes restent formulées comme des pistes à confirmer par un professionnel.
 
-Cette couche est volontairement indépendante d'un modèle génératif : les règles de sécurité, le score de confiance, l'urgence, les bornes de coût et le filtrage des garages restent contrôlables et testables. Une éventuelle brique LLM future ne pourrait donc pas contourner ces garde-fous métier.
+Cette couche reste indépendante du modèle génératif pour les décisions sensibles : les règles de sécurité, l'urgence minimale, les bornes de coût et le filtrage des garages sont contrôlés par le moteur métier. Quand `OPENAI_API_KEY` est configurée, OpenAI améliore l'explication et les questions de suivi dans un format structuré, sans pouvoir diminuer l'urgence ni inventer un prix ou un garage. En cas d'absence de clé, d'erreur ou de délai dépassé, MecaBot revient automatiquement au moteur local.
 
 ## Tests adversariaux
 
 Une suite dédiée vérifie les cas normaux et les entrées volontairement problématiques : hors sujet, message vague, texte aléatoire, injection de prompt, neutralisation d'équipements de sécurité, signaux critiques, historique parasite et mélange de plusieurs symptômes.
 
-Résultat actuel : **52 tests back-end réussis**, **89 % de couverture sur le moteur `assistant.py`** et **82 % sur l'ensemble du package applicatif**. Le front conserve **14 tests réussis**.
+Les résultats de tests à jour sont consignés dans le plan de tests après chaque exécution complète. Une suite adversariale vérifie notamment les injections de prompt, les demandes dangereuses, l'impossibilité de réduire l'urgence et l'interdiction d'inventer des prix ou des garages.

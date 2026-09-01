@@ -25,9 +25,16 @@ JWT_SECRET=<secret-long-genere-aleatoirement>
 FERNET_KEY=<cle-fernet-generee>
 STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxx
 MAPBOX_TOKEN=pk.xxxxxxxxxxxxxxxxx
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxx
+OPENAI_MODEL=gpt-5.6-terra
+OPENAI_TIMEOUT_SECONDS=15
 ADMIN_SEED_PASSWORD=<mot-de-passe-admin-fort>
 GARAGE_SEED_PASSWORD=<mot-de-passe-garage-fort>
 ```
+
+`OPENAI_API_KEY` est une clé serveur : elle ne doit jamais être envoyée au navigateur,
+affichée dans une capture ou commitée. Sans cette variable, MecaBot conserve automatiquement
+son moteur local et tous ses garde-fous.
 
 Pour générer une clé Fernet :
 

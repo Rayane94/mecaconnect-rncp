@@ -46,6 +46,7 @@ type AssistantResponse = {
   specialties: string[];
   garages: AssistantGarage[];
   disclaimer: string;
+  engine?: "rules" | "hybrid-openai";
 };
 
 declare const mapboxgl: any;
@@ -65,6 +66,19 @@ const state: AppState = {
 
 let garageMap: any = null;
 let garageMarkers: any[] = [];
+
+type PageName = "home" | "assistant" | "garages" | "garage-detail" | "auth" | "dashboard" | "how" | "pro";
+
+const pageTitles: Record<PageName, string> = {
+  home: "MecaConnect - Réservez votre garage en ligne",
+  assistant: "MecaBot - Assistant automobile | MecaConnect",
+  garages: "Garages en Île-de-France | MecaConnect",
+  "garage-detail": "Fiche garage | MecaConnect",
+  auth: "Connexion | MecaConnect",
+  dashboard: "Mon espace | MecaConnect",
+  how: "Comment ça marche | MecaConnect",
+  pro: "Espace professionnel | MecaConnect",
+};
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -107,6 +121,92 @@ function showMessage(text: string, type = "info"): void {
   window.setTimeout(() => {
     box.hidden = true;
   }, 5000);
+}
+
+function dashboardPath(user = state.user): string {
+  if (user?.role === "ADMIN") return "/admin";
+  if (user?.role === "GARAGE") return "/espace-garage";
+  return "/mon-espace";
+}
+
+function showPage(page: PageName): void {
+  document.querySelectorAll<HTMLElement>("[data-page]").forEach((section) => {
+    section.hidden = section.dataset.page !== page;
+  });
+  document.title = pageTitles[page];
+  document.querySelectorAll<HTMLAnchorElement>("[data-link]").forEach((link) => {
+    const target = new URL(link.href, window.location.origin).pathname;
+    const active = target === window.location.pathname;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+async function renderRoute(): Promise<void> {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const garageMatch = path.match(/^\/garages\/(\d+)$/);
+
+  if (garageMatch) {
+    showPage("garage-detail");
+    await loadGarageDetail(Number(garageMatch[1]));
+    return;
+  }
+
+  if (path === "/garages") {
+    showPage("garages");
+    window.requestAnimationFrame(() => initGarageMap());
+    return;
+  }
+  if (path === "/mecabot") {
+    showPage("assistant");
+    return;
+  }
+  if (path === "/connexion") {
+    if (state.user) {
+      await navigateTo(dashboardPath(), true);
+      return;
+    }
+    showPage("auth");
+    return;
+  }
+  if (path === "/fonctionnement") {
+    showPage("how");
+    return;
+  }
+  if (path === "/professionnels") {
+    showPage("pro");
+    return;
+  }
+  if (["/mon-espace", "/espace-garage", "/admin"].includes(path)) {
+    if (!state.user) {
+      const next = encodeURIComponent(path);
+      await navigateTo(`/connexion?next=${next}`, true);
+      return;
+    }
+    const expectedPath = dashboardPath();
+    if (path !== expectedPath) {
+      await navigateTo(expectedPath, true);
+      return;
+    }
+    showPage("dashboard");
+    await loadDashboard();
+    return;
+  }
+
+  if (path !== "/") {
+    await navigateTo("/", true);
+    return;
+  }
+  showPage("home");
+}
+
+async function navigateTo(path: string, replace = false): Promise<void> {
+  const target = new URL(path, window.location.origin);
+  if (replace) window.history.replaceState({}, "", `${target.pathname}${target.search}`);
+  else window.history.pushState({}, "", `${target.pathname}${target.search}`);
+  await renderRoute();
 }
 
 function stars(rating: number): string {
@@ -213,26 +313,51 @@ function renderSchematicMap(): void {
 function initGarageMap(): void {
   const token = mapToken();
   const status = element<HTMLParagraphElement>("map-status");
+  const container = element<HTMLDivElement>("garage-map");
+
+  if (garageMap) {
+    garageMap.resize();
+    updateMapMarkers(state.garages);
+    return;
+  }
 
   if (!token.startsWith("pk.") || token.includes("replace_me") || typeof mapboxgl === "undefined") {
-    status.textContent = "Aperçu schématique disponible. Ajoutez MAPBOX_TOKEN pour passer à la carte routière interactive.";
+    status.textContent = !token.startsWith("pk.")
+      ? "Mapbox n'est pas configuré : ajoutez un MAPBOX_TOKEN public commençant par pk. dans Railway."
+      : "La bibliothèque Mapbox n'a pas pu être chargée. Vérifiez le réseau et la politique CSP.";
     renderSchematicMap();
     return;
   }
 
-  mapboxgl.accessToken = token;
-  garageMap = new mapboxgl.Map({
-    container: "garage-map",
-    style: "mapbox://styles/mapbox/streets-v12",
-    center: [2.35, 48.86],
-    zoom: 8.5,
-    attributionControl: true,
-  });
-  garageMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
-  garageMap.on("load", () => {
-    status.textContent = "Carte interactive des ateliers de démonstration MecaConnect en Île-de-France.";
-    updateMapMarkers(state.garages);
-  });
+  try {
+    container.classList.remove("map-placeholder");
+    container.innerHTML = "";
+    status.textContent = "Chargement de la carte Mapbox…";
+    mapboxgl.accessToken = token;
+    garageMap = new mapboxgl.Map({
+      container,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [2.35, 48.86],
+      zoom: 8.5,
+      attributionControl: true,
+    });
+    garageMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+    garageMap.on("load", () => {
+      status.textContent = "Carte interactive chargée. Sélectionnez un atelier pour afficher ses informations.";
+      garageMap.resize();
+      updateMapMarkers(state.garages);
+    });
+    garageMap.on("error", (event: any) => {
+      const detail = event?.error?.message ? ` (${event.error.message})` : "";
+      status.textContent = `Mapbox n'a pas pu afficher la carte${detail}. Vérifiez le token, ses restrictions d'URL et les requêtes réseau.`;
+      status.classList.add("map-error");
+    });
+  } catch (error) {
+    garageMap = null;
+    status.textContent = `Impossible d'initialiser Mapbox : ${(error as Error).message}`;
+    status.classList.add("map-error");
+    renderSchematicMap();
+  }
 }
 
 function populateCities(): void {
@@ -298,13 +423,12 @@ async function loadGarages(): Promise<void> {
   renderGarages(state.garages);
 }
 
-async function openGarage(id: number): Promise<void> {
+async function loadGarageDetail(id: number): Promise<void> {
   const garage = await api<GarageDetail>(`/api/garages/${id}`);
   state.selectedGarage = garage;
 
-  const section = element<HTMLDivElement>("garage-detail");
-  section.hidden = false;
   element<HTMLHeadingElement>("garage-name").textContent = garage.name;
+  document.title = `${garage.name} | MecaConnect`;
   element<HTMLParagraphElement>("garage-address").textContent =
     `${garage.address} - ${garage.city}`;
 
@@ -333,14 +457,17 @@ async function openGarage(id: number): Promise<void> {
     });
   });
 
-  section.scrollIntoView({ behavior: "smooth" });
+}
+
+async function openGarage(id: number): Promise<void> {
+  await navigateTo(`/garages/${id}`);
 }
 
 async function startBooking(serviceId: number): Promise<void> {
   try {
     if (!state.user) {
-      element<HTMLDialogElement>("auth-dialog").showModal();
       showMessage("Connectez-vous avant de réserver.", "warning");
+      await navigateTo(`/connexion?next=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
 
@@ -440,10 +567,14 @@ function renderAssistantResponse(result: AssistantResponse): void {
     : result.response_type === "safety_stop"
       ? `<span>Priorité sécurité</span>`
       : `<span>Aucun diagnostic forcé</span>`;
+  const engine = result.engine === "hybrid-openai"
+    ? '<span class="ai-badge">IA OpenAI + garde-fous MecaConnect</span>'
+    : '<span class="ai-badge local">Moteur sécurisé MecaConnect</span>';
 
   appendChatMessage(
     "bot",
     `<strong>MecaBot</strong>
+     <div class="assistant-engine">${engine}</div>
      <div class="assistant-result-head"><span class="urgency ${urgencyClass(result.urgency.level)}">${safeText(result.urgency.label)}</span>${confidence}</div>
      <p>${safeText(result.summary)}</p>
      ${estimate}
@@ -645,20 +776,30 @@ async function loadAdminDashboard(): Promise<void> {
 
   const content = element<HTMLDivElement>("dashboard-content");
   content.innerHTML = `
+    <div class="admin-intro panel">
+      <div><span class="admin-kicker">SUPERVISION DE LA PLATEFORME</span><h3>Vue d'ensemble MecaConnect</h3><p>Suivez les comptes, les garages partenaires, les réservations et les paiements depuis cet espace sécurisé.</p></div>
+      <a class="btn secondary" href="/api/docs">Ouvrir Swagger</a>
+    </div>
     <div class="stats-grid">
       <article><strong>${stats.users}</strong><span>utilisateurs</span></article>
       <article><strong>${stats.garages}</strong><span>garages</span></article>
       <article><strong>${stats.bookings}</strong><span>réservations</span></article>
       <article><strong>${stats.payments_succeeded}</strong><span>paiements réussis</span></article>
+      <article><strong>${stats.analytics_events}</strong><span>événements analytics consentis</span></article>
     </div>
-    <div class="panel">
-      <h3>Garages suivis</h3>
-      ${data.garages
-        .map(
-          (garage: any) =>
-            `<p><strong>${safeText(garage.name)}</strong> - ${safeText(garage.city)} · ${garage.services} prestation(s)</p>`,
-        )
-        .join("")}
+    <div class="dashboard-grid admin-grid">
+      <article class="panel">
+        <div class="panel-heading"><div><span class="panel-label">RÉSEAU</span><h3>Garages suivis</h3></div><span>${data.garages.length} établissement(s)</span></div>
+        <div class="admin-list">${data.garages.length
+          ? data.garages.map((garage: any) => `<div class="admin-row"><div><strong>${safeText(garage.name)}</strong><small>${safeText(garage.city)} · ${garage.services} prestation(s)</small></div><span class="status-pill ${garage.verified ? "verified" : "pending"}">${garage.verified ? "Vérifié" : "À contrôler"}</span></div>`).join("")
+          : "<p>Aucun garage enregistré.</p>"}</div>
+      </article>
+      <article class="panel">
+        <div class="panel-heading"><div><span class="panel-label">ACTIVITÉ</span><h3>Réservations récentes</h3></div><span>${data.bookings.length} affichée(s)</span></div>
+        <div class="admin-list">${data.bookings.length
+          ? data.bookings.slice(0, 10).map((booking: any) => `<div class="admin-row"><div><strong>#${booking.id} · ${safeText(booking.service)}</strong><small>${safeText(booking.garage)} · ${new Date(booking.starts_at).toLocaleString("fr-FR")}</small></div><span class="status-pill">${safeText(booking.status)}</span></div>`).join("")
+          : "<p>Aucune réservation récente.</p>"}</div>
+      </article>
     </div>
   `;
 }
@@ -675,10 +816,16 @@ async function loadDashboard(): Promise<void> {
   element("dashboard-role").textContent = state.user.role;
 
   if (state.user.role === "USER") {
+    element("dashboard-eyebrow").textContent = "ESPACE AUTOMOBILISTE";
+    element("dashboard-title").textContent = "Mon espace";
     await loadUserDashboard();
   } else if (state.user.role === "GARAGE") {
+    element("dashboard-eyebrow").textContent = "ESPACE PROFESSIONNEL";
+    element("dashboard-title").textContent = "Tableau de bord garage";
     await loadGarageDashboard();
   } else {
+    element("dashboard-eyebrow").textContent = "ADMINISTRATION";
+    element("dashboard-title").textContent = "Tableau de bord administrateur";
     await loadAdminDashboard();
   }
 }
@@ -689,7 +836,6 @@ async function updateSession(): Promise<void> {
     element("account-label").textContent = state.user.full_name;
     element<HTMLButtonElement>("logout").hidden = false;
     element<HTMLButtonElement>("dashboard-label").hidden = false;
-    await loadDashboard();
   } catch {
     state.user = undefined;
     element("account-label").textContent = "Connexion";
@@ -700,11 +846,25 @@ async function updateSession(): Promise<void> {
 }
 
 function bindEvents(): void {
+  document.querySelectorAll<HTMLAnchorElement>("a[data-link]").forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const target = new URL(link.href, window.location.origin);
+      await navigateTo(`${target.pathname}${target.search}`);
+    });
+  });
+
+  window.addEventListener("popstate", () => {
+    renderRoute().catch((error) => showMessage((error as Error).message, "error"));
+  });
+
   element<HTMLFormElement>("search-form").addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const city = element<HTMLSelectElement>("city").value;
     const query = element<HTMLInputElement>("q").value;
+    await navigateTo("/garages");
     const filtered = filterGarages(state.garages, query, city);
     renderGarages(filtered);
 
@@ -735,19 +895,11 @@ function bindEvents(): void {
   });
 
   element<HTMLButtonElement>("account-label").addEventListener("click", () => {
-    if (state.user) {
-      element("dashboard").scrollIntoView({ behavior: "smooth" });
-    } else {
-      element<HTMLDialogElement>("auth-dialog").showModal();
-    }
+    navigateTo(state.user ? dashboardPath() : "/connexion");
   });
 
   element<HTMLButtonElement>("dashboard-label").addEventListener("click", () => {
-    element("dashboard").scrollIntoView({ behavior: "smooth" });
-  });
-
-  element<HTMLButtonElement>("close-auth").addEventListener("click", () => {
-    element<HTMLDialogElement>("auth-dialog").close();
+    navigateTo(dashboardPath());
   });
 
   element<HTMLButtonElement>("close-booking").addEventListener("click", () => {
@@ -757,6 +909,7 @@ function bindEvents(): void {
   element<HTMLButtonElement>("logout").addEventListener("click", async () => {
     await api("/api/auth/logout", { method: "POST" });
     await updateSession();
+    await navigateTo("/");
     showMessage("Vous êtes déconnecté.", "success");
   });
 
@@ -773,8 +926,10 @@ function bindEvents(): void {
         }),
       });
 
-      element<HTMLDialogElement>("auth-dialog").close();
       await updateSession();
+      const next = new URLSearchParams(window.location.search).get("next");
+      const destination = next?.startsWith("/") ? next : dashboardPath();
+      await navigateTo(destination, true);
       showMessage("Connexion réussie.", "success");
     } catch (error) {
       showMessage((error as Error).message, "error");
@@ -803,8 +958,8 @@ function bindEvents(): void {
         }),
       });
 
-      element<HTMLDialogElement>("auth-dialog").close();
       await updateSession();
+      await navigateTo("/mon-espace", true);
       showMessage("Compte créé.", "success");
     } catch (error) {
       showMessage((error as Error).message, "error");
@@ -841,7 +996,7 @@ function bindEvents(): void {
           `Réservation confirmée. Acompte test : ${formatPrice(payment.amount)}.`,
           "success",
         );
-        await loadDashboard();
+        await navigateTo(dashboardPath());
       } else if (payment.checkout_url) {
         window.location.href = payment.checkout_url;
       }
@@ -894,7 +1049,7 @@ function bindEvents(): void {
 async function start(): Promise<void> {
   bindEvents();
   await Promise.all([loadGarages(), updateSession()]);
-  initGarageMap();
+  await renderRoute();
 
   const consent = localStorage.getItem("mc-consent");
   if (!consent) {

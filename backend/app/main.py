@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from . import models, schemas
 from .assistant import build_diagnosis, prepare_conversation_message
+from .ai_assistant import ai_is_configured, configured_model, enhance_diagnosis
 from .database import Base, engine, get_db
 from .payment import StripeHttpProvider, get_payment_provider
 from .security import (
@@ -87,9 +88,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "img-src 'self' data: https:; "
-        "style-src 'self' https://api.mapbox.com; "
+        "style-src 'self' 'unsafe-inline' https://api.mapbox.com; "
         "script-src 'self' https://api.mapbox.com; "
-        "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://api.stripe.com"
+        "connect-src 'self' https://*.mapbox.com https://api.stripe.com; "
+        "worker-src 'self' blob:; "
+        "child-src blob:"
     )
 
     if COOKIE_SECURE:
@@ -393,7 +396,7 @@ def list_garages(
 
 
 @app.post("/api/assistant/diagnose")
-def assistant_diagnose(
+async def assistant_diagnose(
     payload: schemas.AssistantMessageIn,
     db: Session = Depends(get_db),
 ):
@@ -402,7 +405,7 @@ def assistant_diagnose(
     context = prepare_conversation_message(payload.message, payload.history)
     garages = db.scalars(select(models.Garage).order_by(models.Garage.rating.desc())).all()
 
-    return build_diagnosis(
+    diagnosis = build_diagnosis(
         message=context,
         garages=list(garages),
         make=payload.vehicle_make,
@@ -412,6 +415,26 @@ def assistant_diagnose(
         user_lat=payload.lat,
         user_lng=payload.lng,
     )
+
+    return await enhance_diagnosis(
+        base=diagnosis,
+        message=context,
+        history=payload.history,
+        make=payload.vehicle_make,
+        model=payload.vehicle_model,
+        year=payload.vehicle_year,
+        location=payload.location,
+    )
+
+
+@app.get("/api/assistant/status")
+def assistant_status():
+    return {
+        "mode": "hybrid-openai" if ai_is_configured() else "rules-fallback",
+        "configured": ai_is_configured(),
+        "model": configured_model() if ai_is_configured() else None,
+        "guardrails": "deterministic",
+    }
 
 
 @app.get("/api/garages/{garage_id}")
@@ -925,8 +948,7 @@ if FRONT_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONT_DIR)), name="assets")
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def frontend_root():
+def render_frontend() -> HTMLResponse:
     index_file = FRONT_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse("<h1>MecaConnect API</h1>")
@@ -935,6 +957,24 @@ def frontend_root():
     html = html.replace("__MAPBOX_TOKEN__", os.getenv("MAPBOX_TOKEN", ""))
     html = html.replace("__APP_BASE_URL__", APP_BASE_URL)
     return HTMLResponse(html)
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def frontend_root():
+    return render_frontend()
+
+
+@app.get("/mecabot", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/garages", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/garages/{garage_id:int}", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/connexion", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/mon-espace", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/espace-garage", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/fonctionnement", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/professionnels", response_class=HTMLResponse, include_in_schema=False)
+def frontend_page(garage_id: int | None = None):
+    return render_frontend()
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
@@ -949,11 +989,16 @@ def robots():
 
 @app.get("/sitemap.xml", include_in_schema=False)
 def sitemap():
+    public_paths = ("/", "/garages", "/mecabot", "/fonctionnement", "/professionnels")
+    entries = "\n".join(
+        f"  <url><loc>{APP_BASE_URL}{path}</loc><changefreq>weekly</changefreq>"
+        f"<priority>{'1.0' if path == '/' else '0.8'}</priority></url>"
+        for path in public_paths
+    )
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"  <url><loc>{APP_BASE_URL}/</loc><changefreq>weekly</changefreq>"
-        "<priority>1.0</priority></url>\n"
+        f"{entries}\n"
         "</urlset>"
     )
     return Response(content=xml, media_type="application/xml")

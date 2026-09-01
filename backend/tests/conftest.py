@@ -2,6 +2,7 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_mecaconnect.db"
 os.environ["JWT_SECRET"] = "test-secret-key-that-is-at-least-32-bytes-long"
+os.environ.pop("OPENAI_API_KEY", None)
 
 from pathlib import Path
 

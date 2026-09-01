@@ -3,6 +3,31 @@ from .conftest import login
 def test_health(client):
     r=client.get("/api/health"); assert r.status_code==200; assert r.json()["status"]=="ok"
 
+
+def test_frontend_pages_are_directly_accessible(client):
+    for path in (
+        "/",
+        "/mecabot",
+        "/garages",
+        "/garages/1",
+        "/connexion",
+        "/mon-espace",
+        "/espace-garage",
+        "/admin",
+        "/fonctionnement",
+        "/professionnels",
+    ):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 200
+        assert "MecaConnect" in response.text
+
+
+def test_assistant_status_does_not_expose_secrets(client):
+    response = client.get("/api/assistant/status")
+    assert response.status_code == 200
+    assert response.json()["mode"] == "rules-fallback"
+    assert "api_key" not in response.text.lower()
+
 def test_register_login_and_me(client):
     email="rayane.test@example.com"
     r=client.post("/api/auth/register",json={"email":email,"password":"StrongPassword-2026!","full_name":"Rayane Test","phone":"0600000000"})

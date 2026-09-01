@@ -32,7 +32,7 @@
 - Export RGPD.
 - Hachage mot de passe, JWT et TOTP.
 
-Objectif de couverture : >= 50 % conformément à C18 et C25, cible interne >= 70 %. Résultats actuels : front 14 tests réussis ; back 52 tests réussis, 82 % de couverture globale et 89 % sur le moteur MecaBot.
+Objectif de couverture : >= 50 % conformément à C18 et C25, cible interne >= 70 %. Les nombres de tests et la couverture sont actualisés à partir de la dernière exécution complète avant livraison, sans réutiliser les anciens rapports comme preuve d'une version plus récente.
 
 
 ## MecaBot / catalogue IDF
