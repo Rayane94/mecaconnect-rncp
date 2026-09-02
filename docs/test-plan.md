@@ -47,4 +47,7 @@ Objectif de couverture : >= 50 % conformément à C18 et C25, cible interne >= 7
 - Vérifier que deux familles de symptômes proches déclenchent une clarification au lieu d'un prix arbitraire.
 - Vérifier que les garages recommandés possèdent une spécialité ou une prestation correspondant au problème.
 - Vérifier que l'interface contient le formulaire MecaBot et la zone cartographique.
-- Vérifier le fallback schématique lorsque Mapbox n'est pas configuré.
+- Vérifier que la carte utilise MapLibre/OpenFreeMap sans token et qu'aucune dépendance Mapbox ne subsiste.
+- Vérifier le fallback schématique si MapLibre ou les ressources OpenFreeMap ne chargent pas.
+- Vérifier que Groq ne peut modifier ni l'urgence, ni le prix, ni les garages d'un diagnostic local.
+- Vérifier le fallback local lorsque `GROQ_API_KEY` est absente.

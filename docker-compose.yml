@@ -21,9 +21,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       FERNET_KEY: ${FERNET_KEY}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      MAPBOX_TOKEN: ${MAPBOX_TOKEN}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      GROQ_TIMEOUT_SECONDS: ${GROQ_TIMEOUT_SECONDS:-15}
     ports:
       - "8000:8000"
     depends_on:

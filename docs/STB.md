@@ -34,5 +34,5 @@
 - Prise en compte facultative de la marque, du modèle, de l'année et de la zone.
 - Classement des garages par spécialité, marque, note et proximité.
 - Catalogue de 31 ateliers de démonstration couvrant les 8 départements d'Île-de-France.
-- Carte schématique hors ligne et carte interactive Mapbox lorsque le token est configuré.
+- Carte interactive MapLibre/OpenFreeMap sans token, avec carte schématique locale de secours.
 - Avertissement explicite : la réponse ne remplace ni l'examen d'un mécanicien ni un devis.

@@ -1,2 +1,23 @@
-..................                                                       [100%]
-18 passed in 0.81s
+.............................................................            [100%]
+61 passed in 4.62s
+
+Name                                 Stmts   Miss  Cover
+--------------------------------------------------------
+app/ai_assistant.py                     69      3    96%
+app/assistant.py                       221     24    89%
+app/database.py                         21      2    90%
+app/main.py                            388    122    69%
+app/models.py                          123      0   100%
+app/payment.py                          35      1    97%
+app/schemas.py                          60      0   100%
+app/security.py                         69      8    88%
+app/seed.py                             68      8    88%
+tests/__init__.py                        0      0   100%
+tests/conftest.py                       26      0   100%
+tests/test_ai_assistant.py              90      0   100%
+tests/test_api.py                      155      0   100%
+tests/test_assistant_guardrails.py      48      0   100%
+tests/test_payment_provider.py          46      0   100%
+tests/test_security.py                   8      0   100%
+--------------------------------------------------------
+TOTAL                                 1427    168    88%

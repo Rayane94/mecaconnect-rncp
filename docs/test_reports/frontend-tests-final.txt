@@ -10,106 +10,112 @@ TAP version 13
 # Subtest: normalization and garage filtering
 ok 1 - normalization and garage filtering
   ---
-  duration_ms: 1.121474
+  duration_ms: 2.676118
   type: 'test'
   ...
 # Subtest: deposit calculation
 ok 2 - deposit calculation
   ---
-  duration_ms: 0.13917
+  duration_ms: 0.375795
   type: 'test'
   ...
 # Subtest: password policy
 ok 3 - password policy
   ---
-  duration_ms: 0.2643
+  duration_ms: 0.616488
   type: 'test'
   ...
 # Subtest: safe text removes angle brackets
 ok 4 - safe text removes angle brackets
   ---
-  duration_ms: 0.111792
+  duration_ms: 0.591543
   type: 'test'
   ...
 # Subtest: slots are sorted chronologically
 ok 5 - slots are sorted chronologically
   ---
-  duration_ms: 0.544783
+  duration_ms: 1.023553
   type: 'test'
   ...
 # Subtest: price formatter uses EUR
 ok 6 - price formatter uses EUR
   ---
-  duration_ms: 12.294137
+  duration_ms: 48.178108
   type: 'test'
   ...
 # Subtest: HTML language and responsive viewport are declared
 ok 7 - HTML language and responsive viewport are declared
   ---
-  duration_ms: 1.149327
+  duration_ms: 2.856576
   type: 'test'
   ...
 # Subtest: main SEO metadata and canonical are present
 ok 8 - main SEO metadata and canonical are present
   ---
-  duration_ms: 0.196681
+  duration_ms: 0.552621
   type: 'test'
   ...
 # Subtest: Open Graph metadata are present
 ok 9 - Open Graph metadata are present
   ---
-  duration_ms: 0.086178
+  duration_ms: 0.326786
   type: 'test'
   ...
 # Subtest: semantic landmarks and skip link exist
 ok 10 - semantic landmarks and skip link exist
   ---
-  duration_ms: 0.155804
+  duration_ms: 0.676833
   type: 'test'
   ...
 # Subtest: forms expose labels and status region
 ok 11 - forms expose labels and status region
   ---
-  duration_ms: 0.206617
+  duration_ms: 0.54246
   type: 'test'
   ...
 # Subtest: cookie consent and privacy access are present
 ok 12 - cookie consent and privacy access are present
   ---
-  duration_ms: 0.154517
+  duration_ms: 0.429895
   type: 'test'
   ...
 # Subtest: role-specific dashboard and booking dialog exist
 ok 13 - role-specific dashboard and booking dialog exist
   ---
-  duration_ms: 0.088645
+  duration_ms: 0.387482
+  type: 'test'
+  ...
+# Subtest: main features use dedicated browser routes
+ok 14 - main features use dedicated browser routes
+  ---
+  duration_ms: 0.552384
   type: 'test'
   ...
 # Subtest: MecaBot assistant and IDF map are present
-ok 14 - MecaBot assistant and IDF map are present
+ok 15 - MecaBot assistant and IDF map are present
   ---
-  duration_ms: 0.084065
+  duration_ms: 0.574291
   type: 'test'
   ...
-1..14
-# tests 14
+1..15
+# tests 15
 # suites 0
-# pass 14
+# pass 15
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 81.569369
+# duration_ms 420.467812
 # start of coverage report
 # --------------------------------------------------------------------------
 # file                      | line % | branch % | funcs % | uncovered lines
 # --------------------------------------------------------------------------
-# public                    |        |          |         | 
+# public                    |        |          |         |
 #  lib.js                   |  94.74 |    93.33 |  100.00 | 25-26
-# tests                     |        |          |         | 
-#  lib.test.mjs             | 100.00 |   100.00 |  100.00 | 
-#  static-contract.test.mjs | 100.00 |    90.91 |  100.00 | 
+# tests                     |        |          |         |
+#  lib.test.mjs             | 100.00 |   100.00 |  100.00 |
+#  static-contract.test.mjs | 100.00 |    92.86 |  100.00 |
 # --------------------------------------------------------------------------
-# all files                 |  97.89 |    93.94 |  100.00 | 
+# all files                 |  98.21 |    94.44 |  100.00 |
 # --------------------------------------------------------------------------
 # end of coverage report

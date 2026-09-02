@@ -58,5 +58,8 @@ test('MecaBot assistant and IDF map are present',()=>{
   assert.match(html,/id="assistant-form"/);
   assert.match(html,/id="garage-map"/);
   assert.match(html,/MECABOT - ASSISTANT AUTO/);
-  assert.match(html,/mapbox-gl-js/);
+  assert.match(html,/maplibre-gl@5\.24\.0/);
+  assert.match(appSource,/tiles\.openfreemap\.org\/styles\/liberty/);
+  assert.doesNotMatch(html,/mapbox/i);
+  assert.doesNotMatch(appSource,/mapbox/i);
 });

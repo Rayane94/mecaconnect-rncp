@@ -84,8 +84,8 @@ users->vehicles; users->bookings; users->garages; garages->services; garages->av
 
 dot('05-architecture', r'''
 digraph G { graph [rankdir=TB,bgcolor="white",pad=.4,nodesep=.4,ranksep=.55]; node [shape=box,fontname="Arial",fontsize=10,style="rounded,filled",fillcolor="#f8f8f8",color="#666",margin=.15];
-Browser[label="Navigateur\nHTML + CSS + TypeScript\nWCAG / SEO / consentement"]; API[label="API REST FastAPI\nValidation Pydantic\nRBAC / JWT / TOTP\nOpenAPI"]; DB[label="Couche persistance\nSQLAlchemy\nPostgreSQL en conteneur\nSQLite pour test local"]; Stripe[label="Stripe Test\nPaiement acompte"]; Mapbox[label="Mapbox\nGéocodage (option configurée)"]; Logs[label="AuditLog / Healthcheck\nMonitoring cible"];
-Browser->API[label="HTTPS / JSON"]; API->DB[label="ORM / transactions"]; API->Stripe[label="HTTPS API"]; Browser->Mapbox[label="HTTPS API tierce"]; API->Logs[label="journalisation"];
+Browser[label="Navigateur\nHTML + CSS + TypeScript\nWCAG / SEO / consentement"]; API[label="API REST FastAPI\nValidation Pydantic\nRBAC / JWT / TOTP\nOpenAPI"]; DB[label="Couche persistance\nSQLAlchemy\nPostgreSQL en conteneur\nSQLite pour test local"]; Stripe[label="Stripe Test\nPaiement acompte"]; MapLibre[label="MapLibre + OpenFreeMap\nCarte libre sans token"]; Groq[label="Groq API\nEnrichissement MecaBot optionnel"]; Logs[label="AuditLog / Healthcheck\nMonitoring cible"];
+Browser->API[label="HTTPS / JSON"]; API->DB[label="ORM / transactions"]; API->Stripe[label="HTTPS API"]; Browser->MapLibre[label="tuiles / style"]; API->Groq[label="HTTPS si clé configurée"]; API->Logs[label="journalisation"];
 }
 ''')
 

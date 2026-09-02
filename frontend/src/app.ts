@@ -46,10 +46,10 @@ type AssistantResponse = {
   specialties: string[];
   garages: AssistantGarage[];
   disclaimer: string;
-  engine?: "rules" | "hybrid-openai";
+  engine?: "rules" | "hybrid-groq";
 };
 
-declare const mapboxgl: any;
+declare const maplibregl: any;
 
 type AppState = {
   garages: Garage[];
@@ -214,34 +214,37 @@ function stars(rating: number): string {
   return "★".repeat(rounded) + "☆".repeat(Math.max(0, 5 - rounded));
 }
 
-async function geocodeCity(city: string): Promise<number[] | null> {
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="mapbox-token"]');
-  const token = meta?.content || "";
-
-  if (!city || !token.startsWith("pk.") || token.includes("replace_me")) {
-    return null;
-  }
-
-  const url =
-    `https://api.mapbox.com/geocoding/v5/mapbox.places/` +
-    `${encodeURIComponent(city)}.json?access_token=${encodeURIComponent(token)}` +
-    `&limit=1&language=fr`;
-
-  const response = await fetch(url, {
-    headers: { Accept: "application/json" },
-  });
-
-  if (!response.ok) {
-    throw new Error("Service cartographique indisponible");
-  }
-
-  const data = await response.json();
-  return data.features?.[0]?.center || null;
+function normalizeLocation(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("fr-FR");
 }
 
-function mapToken(): string {
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="mapbox-token"]');
-  return meta?.content || "";
+function coordinatesForLocation(location: string): number[] | null {
+  const query = normalizeLocation(location);
+  if (!query) return null;
+
+  const matches = state.garages.filter((garage) => {
+    if (garage.lat == null || garage.lng == null) return false;
+    const city = normalizeLocation(garage.city || "");
+    const department = normalizeLocation(garage.department || "");
+    const postalCode = normalizeLocation(garage.postal_code || "");
+    return (
+      query === city ||
+      query === department ||
+      query === postalCode ||
+      query.includes(city) ||
+      (!!department && query.includes(department)) ||
+      (!!postalCode && query.includes(postalCode))
+    );
+  });
+
+  if (!matches.length) return null;
+  const lng = matches.reduce((sum, garage) => sum + Number(garage.lng), 0) / matches.length;
+  const lat = matches.reduce((sum, garage) => sum + Number(garage.lat), 0) / matches.length;
+  return [lng, lat];
 }
 
 function focusGarageOnMap(garage: Garage): void {
@@ -252,24 +255,24 @@ function focusGarageOnMap(garage: Garage): void {
 }
 
 function updateMapMarkers(garages: Garage[]): void {
-  if (!garageMap || typeof mapboxgl === "undefined") {
+  if (!garageMap || typeof maplibregl === "undefined") {
     return;
   }
 
   garageMarkers.forEach((marker) => marker.remove());
   garageMarkers = [];
 
-  const bounds = new mapboxgl.LngLatBounds();
+  const bounds = new maplibregl.LngLatBounds();
   for (const garage of garages) {
     if (garage.lat == null || garage.lng == null) {
       continue;
     }
 
-    const popup = new mapboxgl.Popup({ offset: 20 }).setHTML(
+    const popup = new maplibregl.Popup({ offset: 20 }).setHTML(
       `<strong>${safeText(garage.name)}</strong><br>${safeText(garage.city)}<br>` +
       `<small>${safeText((garage.specialties || []).slice(0, 3).join(" · "))}</small>`,
     );
-    const marker = new mapboxgl.Marker({ color: "#e4461a" })
+    const marker = new maplibregl.Marker({ color: "#e4461a" })
       .setLngLat([garage.lng, garage.lat])
       .setPopup(popup)
       .addTo(garageMap);
@@ -285,7 +288,7 @@ function updateMapMarkers(garages: Garage[]): void {
 function renderSchematicMap(): void {
   const container = element<HTMLDivElement>("garage-map");
   container.classList.add("map-placeholder");
-  container.innerHTML = '<div class="schematic-label">Carte IDF schématique - la version Mapbox s’active avec le token du projet</div>';
+  container.innerHTML = '<div class="schematic-label">Carte IDF de secours - affichage local des garages</div>';
 
   const points = state.garages.filter((garage) => garage.lat != null && garage.lng != null);
   if (!points.length) return;
@@ -311,7 +314,6 @@ function renderSchematicMap(): void {
 }
 
 function initGarageMap(): void {
-  const token = mapToken();
   const status = element<HTMLParagraphElement>("map-status");
   const container = element<HTMLDivElement>("garage-map");
 
@@ -321,10 +323,9 @@ function initGarageMap(): void {
     return;
   }
 
-  if (!token.startsWith("pk.") || token.includes("replace_me") || typeof mapboxgl === "undefined") {
-    status.textContent = !token.startsWith("pk.")
-      ? "Mapbox n'est pas configuré : ajoutez un MAPBOX_TOKEN public commençant par pk. dans Railway."
-      : "La bibliothèque Mapbox n'a pas pu être chargée. Vérifiez le réseau et la politique CSP.";
+  if (typeof maplibregl === "undefined") {
+    status.textContent = "La bibliothèque MapLibre n'a pas pu être chargée. La carte de secours reste disponible.";
+    status.classList.add("map-error");
     renderSchematicMap();
     return;
   }
@@ -332,29 +333,29 @@ function initGarageMap(): void {
   try {
     container.classList.remove("map-placeholder");
     container.innerHTML = "";
-    status.textContent = "Chargement de la carte Mapbox…";
-    mapboxgl.accessToken = token;
-    garageMap = new mapboxgl.Map({
+    status.textContent = "Chargement de la carte libre…";
+    garageMap = new maplibregl.Map({
       container,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: "https://tiles.openfreemap.org/styles/liberty",
       center: [2.35, 48.86],
       zoom: 8.5,
       attributionControl: true,
     });
-    garageMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+    garageMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     garageMap.on("load", () => {
-      status.textContent = "Carte interactive chargée. Sélectionnez un atelier pour afficher ses informations.";
+      status.textContent = "Carte MapLibre / OpenFreeMap chargée. Sélectionnez un atelier pour afficher ses informations.";
+      status.classList.remove("map-error");
       garageMap.resize();
       updateMapMarkers(state.garages);
     });
     garageMap.on("error", (event: any) => {
       const detail = event?.error?.message ? ` (${event.error.message})` : "";
-      status.textContent = `Mapbox n'a pas pu afficher la carte${detail}. Vérifiez le token, ses restrictions d'URL et les requêtes réseau.`;
+      status.textContent = `La carte libre n'a pas pu charger toutes ses ressources${detail}.`;
       status.classList.add("map-error");
     });
   } catch (error) {
     garageMap = null;
-    status.textContent = `Impossible d'initialiser Mapbox : ${(error as Error).message}`;
+    status.textContent = `Impossible d'initialiser MapLibre : ${(error as Error).message}`;
     status.classList.add("map-error");
     renderSchematicMap();
   }
@@ -567,8 +568,8 @@ function renderAssistantResponse(result: AssistantResponse): void {
     : result.response_type === "safety_stop"
       ? `<span>Priorité sécurité</span>`
       : `<span>Aucun diagnostic forcé</span>`;
-  const engine = result.engine === "hybrid-openai"
-    ? '<span class="ai-badge">IA OpenAI + garde-fous MecaConnect</span>'
+  const engine = result.engine === "hybrid-groq"
+    ? '<span class="ai-badge">IA Groq + garde-fous MecaConnect</span>'
     : '<span class="ai-badge local">Moteur sécurisé MecaConnect</span>';
 
   appendChatMessage(
@@ -615,7 +616,7 @@ async function askAssistant(message: string): Promise<void> {
 
   try {
     const location = element<HTMLInputElement>("assistant-location").value.trim();
-    const coordinates = location ? await geocodeCity(location).catch(() => null) : null;
+    const coordinates = location ? coordinatesForLocation(location) : null;
     const yearValue = element<HTMLInputElement>("assistant-year").value;
     const result = await api<AssistantResponse>("/api/assistant/diagnose", {
       method: "POST",
@@ -869,7 +870,7 @@ function bindEvents(): void {
     renderGarages(filtered);
 
     try {
-      const coordinates = await geocodeCity(city);
+      const coordinates = coordinatesForLocation(city);
       if (coordinates && garageMap) {
         garageMap.flyTo({ center: coordinates, zoom: 11.5, essential: true });
       }

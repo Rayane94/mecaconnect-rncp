@@ -83,7 +83,7 @@ async def add_security_headers(request: Request, call_next):
 
     # Swagger UI initialise son interface avec un script intégré dans /api/docs.
     # L'exception reste limitée à cette page ; le site public conserve une CSP stricte.
-    script_src = "'self' https://api.mapbox.com https://cdn.jsdelivr.net"
+    script_src = "'self' https://unpkg.com https://cdn.jsdelivr.net"
     if request.url.path == "/api/docs":
         script_src += " 'unsafe-inline'"
 
@@ -94,9 +94,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "img-src 'self' data: https:; "
-        "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
         f"script-src {script_src}; "
-        "connect-src 'self' https://*.mapbox.com https://api.stripe.com; "
+        "connect-src 'self' https://tiles.openfreemap.org https://api.stripe.com; "
         "worker-src 'self' blob:; "
         "child-src blob:"
     )
@@ -436,7 +436,7 @@ async def assistant_diagnose(
 @app.get("/api/assistant/status")
 def assistant_status():
     return {
-        "mode": "hybrid-openai" if ai_is_configured() else "rules-fallback",
+        "mode": "hybrid-groq" if ai_is_configured() else "rules-fallback",
         "configured": ai_is_configured(),
         "model": configured_model() if ai_is_configured() else None,
         "guardrails": "deterministic",
@@ -762,11 +762,19 @@ async def confirm_stripe_payment(
     db: Session = Depends(get_db),
 ):
     provider = get_payment_provider()
+
     if not isinstance(provider, StripeHttpProvider):
-        raise HTTPException(status_code=400, detail="Stripe Test n'est pas configuré")
+        raise HTTPException(
+            status_code=400,
+            detail="Stripe Test n'est pas configuré",
+        )
 
     session = await provider.retrieve_session(session_id)
-    booking_id = int(session.get("metadata", {}).get("booking_id", 0) or 0)
+
+    booking_id = int(
+        session.get("metadata", {}).get("booking_id", 0) or 0
+    )
+
     booking = db.get(models.Booking, booking_id)
 
     if (
@@ -774,10 +782,16 @@ async def confirm_stripe_payment(
         or not booking.payment
         or booking.payment.provider_reference != session_id
     ):
-        raise HTTPException(status_code=404, detail="Paiement ou réservation introuvable")
+        raise HTTPException(
+            status_code=404,
+            detail="Paiement ou réservation introuvable",
+        )
 
     if session.get("payment_status") != "paid":
-        raise HTTPException(status_code=400, detail="Le paiement Stripe n'est pas confirmé")
+        raise HTTPException(
+            status_code=400,
+            detail="Le paiement Stripe n'est pas confirmé",
+        )
 
     booking.payment.status = "SUCCEEDED"
     booking.status = "CONFIRMED"
@@ -791,26 +805,306 @@ async def confirm_stripe_payment(
         str(booking.id),
     )
 
+    redirect_url = (
+        f"/mon-espace?payment=confirmed&booking_id={booking.id}"
+    )
+
     return HTMLResponse(
-        """
+        f"""
         <!doctype html>
         <html lang="fr">
-          <head>
+        <head>
             <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <meta
+                name="viewport"
+                content="width=device-width, initial-scale=1"
+            >
+
+            <meta
+                http-equiv="refresh"
+                content="6;url={redirect_url}"
+            >
+
             <title>Paiement confirmé - MecaConnect</title>
-          </head>
-          <body>
-            <main>
-              <h1>Paiement confirmé</h1>
-              <p>Votre acompte a été validé et la réservation est confirmée.</p>
-              <p><a href="/">Retour à MecaConnect</a></p>
+
+            <style>
+                * {{
+                    box-sizing: border-box;
+                }}
+
+                body {{
+                    margin: 0;
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 24px;
+                    font-family:
+                        Inter,
+                        -apple-system,
+                        BlinkMacSystemFont,
+                        "Segoe UI",
+                        sans-serif;
+                    background:
+                        radial-gradient(
+                            circle at top left,
+                            rgba(244, 122, 86, 0.20),
+                            transparent 35%
+                        ),
+                        linear-gradient(
+                            135deg,
+                            #f7f4ef 0%,
+                            #eef4f5 100%
+                        );
+                    color: #173f52;
+                }}
+
+                .payment-card {{
+                    width: min(100%, 620px);
+                    padding: 48px;
+                    text-align: center;
+                    background: white;
+                    border-radius: 28px;
+                    box-shadow:
+                        0 24px 70px
+                        rgba(15, 46, 61, 0.14);
+                }}
+
+                .success-icon {{
+                    width: 84px;
+                    height: 84px;
+                    margin: 0 auto 24px;
+                    display: grid;
+                    place-items: center;
+                    border-radius: 50%;
+                    background: #e9f8ef;
+                    color: #18864b;
+                    font-size: 44px;
+                    font-weight: 900;
+                }}
+
+                .eyebrow {{
+                    display: inline-block;
+                    margin-bottom: 12px;
+                    color: #f47a56;
+                    font-size: 13px;
+                    font-weight: 800;
+                    letter-spacing: .12em;
+                    text-transform: uppercase;
+                }}
+
+                h1 {{
+                    margin: 0 0 14px;
+                    font-size: 40px;
+                    line-height: 1.1;
+                }}
+
+                .description {{
+                    max-width: 490px;
+                    margin: 0 auto 28px;
+                    color: #63727a;
+                    font-size: 17px;
+                    line-height: 1.6;
+                }}
+
+                .booking {{
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 20px;
+                    padding: 18px 20px;
+                    margin-bottom: 28px;
+                    text-align: left;
+                    background: #f6f8f8;
+                    border-radius: 16px;
+                }}
+
+                .booking-label {{
+                    display: block;
+                    margin-bottom: 4px;
+                    color: #7b878d;
+                    font-size: 13px;
+                }}
+
+                .booking-id {{
+                    font-size: 19px;
+                    font-weight: 800;
+                }}
+
+                .status {{
+                    padding: 8px 13px;
+                    color: #18864b;
+                    background: #e9f8ef;
+                    border-radius: 999px;
+                    font-size: 12px;
+                    font-weight: 900;
+                }}
+
+                .redirect-text {{
+                    margin: 20px 0;
+                    color: #63727a;
+                }}
+
+                .countdown {{
+                    position: relative;
+                    display: inline-block;
+                    width: 25px;
+                    height: 25px;
+                    color: #173f52;
+                    font-size: 20px;
+                    font-weight: 900;
+                    vertical-align: middle;
+                }}
+
+                .countdown span {{
+                    position: absolute;
+                    inset: 0;
+                    opacity: 0;
+                }}
+
+                .n6 {{
+                    animation: number 1s 0s linear;
+                }}
+
+                .n5 {{
+                    animation: number 1s 1s linear;
+                }}
+
+                .n4 {{
+                    animation: number 1s 2s linear;
+                }}
+
+                .n3 {{
+                    animation: number 1s 3s linear;
+                }}
+
+                .n2 {{
+                    animation: number 1s 4s linear;
+                }}
+
+                .n1 {{
+                    animation: number 1s 5s linear;
+                }}
+
+                @keyframes number {{
+                    0%, 99% {{
+                        opacity: 1;
+                    }}
+
+                    100% {{
+                        opacity: 0;
+                    }}
+                }}
+
+                .button {{
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 50px;
+                    padding: 0 25px;
+                    color: white;
+                    background: #173f52;
+                    border-radius: 13px;
+                    text-decoration: none;
+                    font-weight: 800;
+                }}
+
+                .button:hover {{
+                    background: #102e3c;
+                }}
+
+                .secure {{
+                    margin-top: 22px;
+                    color: #899399;
+                    font-size: 12px;
+                }}
+
+                @media (max-width: 600px) {{
+                    .payment-card {{
+                        padding: 34px 22px;
+                    }}
+
+                    .booking {{
+                        align-items: flex-start;
+                        flex-direction: column;
+                    }}
+
+                    h1 {{
+                        font-size: 32px;
+                    }}
+                }}
+            </style>
+        </head>
+
+        <body>
+            <main class="payment-card">
+
+                <div class="success-icon">
+                    ✓
+                </div>
+
+                <div class="eyebrow">
+                    Paiement sécurisé
+                </div>
+
+                <h1>
+                    Paiement confirmé
+                </h1>
+
+                <p class="description">
+                    Votre acompte a bien été validé.
+                    Votre réservation est maintenant
+                    confirmée auprès du garage.
+                </p>
+
+                <div class="booking">
+                    <div>
+                        <span class="booking-label">
+                            Réservation
+                        </span>
+
+                        <span class="booking-id">
+                            #{booking.id}
+                        </span>
+                    </div>
+
+                    <span class="status">
+                        CONFIRMÉE
+                    </span>
+                </div>
+
+                <p class="redirect-text">
+                    Redirection vers vos réservations dans
+
+                    <span class="countdown">
+                        <span class="n6">6</span>
+                        <span class="n5">5</span>
+                        <span class="n4">4</span>
+                        <span class="n3">3</span>
+                        <span class="n2">2</span>
+                        <span class="n1">1</span>
+                    </span>
+
+                    secondes
+                </p>
+
+                <a
+                    class="button"
+                    href="{redirect_url}"
+                >
+                    Voir ma réservation
+                </a>
+
+                <p class="secure">
+                    Paiement traité de manière sécurisée
+                    par Stripe.
+                </p>
+
             </main>
-          </body>
+        </body>
         </html>
         """
     )
-
 
 @app.post("/api/newsletter/request", status_code=201)
 def newsletter_request(
@@ -960,7 +1254,6 @@ def render_frontend() -> HTMLResponse:
         return HTMLResponse("<h1>MecaConnect API</h1>")
 
     html = index_file.read_text(encoding="utf-8")
-    html = html.replace("__MAPBOX_TOKEN__", os.getenv("MAPBOX_TOKEN", ""))
     html = html.replace("__APP_BASE_URL__", APP_BASE_URL)
     return HTMLResponse(html)
 
