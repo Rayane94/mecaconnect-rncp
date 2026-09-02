@@ -48,12 +48,29 @@ class GarageIn(BaseModel):
     lng: float | None = None
 
 
+class GarageUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=150)
+    city: str | None = Field(default=None, min_length=2, max_length=100)
+    address: str | None = Field(default=None, min_length=5, max_length=255)
+    description: str | None = Field(default=None, min_length=20, max_length=2000)
+    specialties: str | None = Field(default=None, max_length=1000)
+    brands: str | None = Field(default=None, max_length=1000)
+    hourly_rate: float | None = Field(default=None, gt=0, le=1000)
+
+
 class ServiceIn(BaseModel):
     garage_id: int
     name: str = Field(min_length=2, max_length=120)
     description: str | None = Field(default=None, max_length=1000)
     price: float = Field(gt=0, le=10000)
     duration_minutes: int = Field(ge=15, le=1440)
+
+
+class ServiceUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    price: float | None = Field(default=None, gt=0, le=10000)
+    duration_minutes: int | None = Field(default=None, ge=15, le=1440)
 
 
 class SlotIn(BaseModel):
@@ -66,6 +83,10 @@ class BookingIn(BaseModel):
     service_id: int
     slot_id: int
     vehicle_id: int | None = None
+
+
+class BookingStatusIn(BaseModel):
+    status: str = Field(pattern=r"^(CONFIRMED|COMPLETED|CANCELLED)$")
 
 
 class ReviewIn(BaseModel):

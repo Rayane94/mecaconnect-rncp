@@ -165,6 +165,12 @@ async function renderRoute(): Promise<void> {
   }
   if (path === "/connexion") {
     if (state.user) {
+      const requested = new URLSearchParams(window.location.search).get("next");
+      if (requested === "/espace-garage" && !["GARAGE", "ADMIN"].includes(state.user.role)) {
+        showMessage("L’espace garage est réservé aux comptes professionnels GARAGE.", "warning");
+        await navigateTo("/professionnels", true);
+        return;
+      }
       await navigateTo(dashboardPath(), true);
       return;
     }
@@ -212,6 +218,39 @@ async function navigateTo(path: string, replace = false): Promise<void> {
 function stars(rating: number): string {
   const rounded = Math.round(rating);
   return "★".repeat(rounded) + "☆".repeat(Math.max(0, 5 - rounded));
+}
+
+function safeAttr(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString("fr-FR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function bookingStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    PENDING_PAYMENT: "En attente de paiement",
+    CONFIRMED: "Confirmée",
+    COMPLETED: "Terminée",
+    CANCELLED: "Annulée",
+  };
+  return labels[status] || status;
+}
+
+function bookingStatusClass(status: string): string {
+  return `status-${status.toLowerCase().replace(/_/g, "-")}`;
 }
 
 function normalizeLocation(value: string): string {
@@ -657,52 +696,93 @@ async function loadUserDashboard(): Promise<void> {
   ]);
 
   const content = element<HTMLDivElement>("dashboard-content");
+  const confirmed = bookings.filter((booking) => booking.status === "CONFIRMED").length;
+  const completed = bookings.filter((booking) => booking.status === "COMPLETED").length;
+  const deposits = bookings
+    .filter((booking) => booking.payment_status === "SUCCEEDED")
+    .reduce((sum, booking) => sum + Number(booking.deposit_amount || 0), 0);
+  const nextBooking = [...bookings]
+    .filter((booking) => booking.status === "CONFIRMED" && new Date(booking.starts_at).getTime() >= Date.now())
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())[0];
+
   content.innerHTML = `
-    <div class="dashboard-grid">
-      <article class="panel">
-        <h3>Mes véhicules</h3>
-        <form id="vehicle-form" class="stack-form">
-          <label>Marque<input id="vehicle-make" required></label>
-          <label>Modèle<input id="vehicle-model" required></label>
-          <label>Année<input id="vehicle-year" type="number" min="1950" max="2100" required></label>
-          <button class="btn" type="submit">Ajouter</button>
-        </form>
+    <div class="dashboard-shell">
+      <div class="dashboard-welcome user-dashboard-hero">
         <div>
-          ${
-            vehicles.length
-              ? vehicles
-                  .map(
-                    (vehicle) =>
-                      `<p><strong>${safeText(vehicle.make)} ${safeText(vehicle.model)}</strong> - ${vehicle.year}</p>`,
-                  )
-                  .join("")
-              : "<p>Aucun véhicule enregistré.</p>"
-          }
+          <span class="dashboard-kicker">ESPACE AUTOMOBILISTE</span>
+          <h3>Bonjour ${safeText(state.user?.full_name || "")}</h3>
+          <p>Gérez vos véhicules et retrouvez vos rendez-vous MecaConnect dans un espace unique.</p>
         </div>
-      </article>
-      <article class="panel">
-        <h3>Mes réservations</h3>
-        ${
-          bookings.length
-            ? bookings
-                .map(
-                  (booking) => `
-                    <p>
-                      <strong>${safeText(booking.garage)}</strong> - ${safeText(booking.service)}<br>
-                      <small>
-                        ${new Date(booking.starts_at).toLocaleString("fr-FR")} ·
-                        ${safeText(booking.status)} ·
-                        acompte ${formatPrice(booking.deposit_amount)}
-                      </small>
-                    </p>
-                  `,
-                )
-                .join("")
-            : "<p>Aucune réservation.</p>"
-        }
-      </article>
+        <a class="btn secondary" href="/garages" data-dashboard-link>Réserver une prestation</a>
+      </div>
+
+      <div class="dashboard-kpis">
+        <article><span>Véhicules</span><strong>${vehicles.length}</strong><small>enregistré(s)</small></article>
+        <article><span>À venir</span><strong>${confirmed}</strong><small>réservation(s) confirmée(s)</small></article>
+        <article><span>Terminées</span><strong>${completed}</strong><small>intervention(s)</small></article>
+        <article><span>Acomptes</span><strong>${formatPrice(deposits)}</strong><small>validés via Stripe</small></article>
+      </div>
+
+      ${nextBooking ? `
+        <article class="next-appointment-card">
+          <div><span class="panel-label">PROCHAIN RENDEZ-VOUS</span><h3>${safeText(nextBooking.garage)}</h3><p>${safeText(nextBooking.service)} · ${formatDateTime(nextBooking.starts_at)}</p></div>
+          <span class="status-pill verified">Confirmée</span>
+        </article>
+      ` : ""}
+
+      <div class="dashboard-grid user-dashboard-grid">
+        <article class="panel dashboard-panel">
+          <div class="panel-heading"><div><span class="panel-label">GARAGE PERSONNEL</span><h3>Mes véhicules</h3></div><span>${vehicles.length} véhicule(s)</span></div>
+          <div class="vehicle-list">
+            ${vehicles.length
+              ? vehicles.map((vehicle) => `
+                <div class="vehicle-card">
+                  <div class="vehicle-icon">AUTO</div>
+                  <div><strong>${safeText(vehicle.make)} ${safeText(vehicle.model)}</strong><small>${vehicle.year}${vehicle.plate ? ` · ${safeText(vehicle.plate)}` : ""}</small></div>
+                </div>
+              `).join("")
+              : '<div class="empty-state"><strong>Aucun véhicule</strong><span>Ajoutez votre véhicule pour accélérer vos prochaines réservations.</span></div>'}
+          </div>
+          <form id="vehicle-form" class="management-form compact-form">
+            <h4>Ajouter un véhicule</h4>
+            <div class="form-grid two-cols">
+              <label>Marque<input id="vehicle-make" required placeholder="Mercedes"></label>
+              <label>Modèle<input id="vehicle-model" required placeholder="CLA 200"></label>
+              <label>Année<input id="vehicle-year" type="number" min="1950" max="2100" required placeholder="2021"></label>
+              <label>Immatriculation<input id="vehicle-plate" maxlength="24" placeholder="AA-123-AA"></label>
+            </div>
+            <button class="btn" type="submit">Ajouter le véhicule</button>
+          </form>
+        </article>
+
+        <article class="panel dashboard-panel">
+          <div class="panel-heading"><div><span class="panel-label">HISTORIQUE</span><h3>Mes réservations</h3></div><span>${bookings.length} réservation(s)</span></div>
+          <div class="booking-list">
+            ${bookings.length
+              ? bookings.map((booking) => `
+                <article class="booking-card ${bookingStatusClass(booking.status)}">
+                  <div class="booking-card-head">
+                    <div><strong>${safeText(booking.garage)}</strong><span>#${booking.id}</span></div>
+                    <span class="status-pill ${booking.status === "CONFIRMED" ? "verified" : booking.status === "PENDING_PAYMENT" ? "pending" : ""}">${safeText(bookingStatusLabel(booking.status))}</span>
+                  </div>
+                  <h4>${safeText(booking.service)}</h4>
+                  <p>${formatDateTime(booking.starts_at)}</p>
+                  <div class="booking-money"><span>Acompte <strong>${formatPrice(booking.deposit_amount)}</strong></span><span>Paiement <strong>${booking.payment_status === "SUCCEEDED" ? "Validé" : "En attente"}</strong></span></div>
+                </article>
+              `).join("")
+              : '<div class="empty-state"><strong>Aucune réservation</strong><span>Vos prochains rendez-vous apparaîtront ici.</span></div>'}
+          </div>
+        </article>
+      </div>
     </div>
   `;
+
+  content.querySelectorAll<HTMLAnchorElement>("[data-dashboard-link]").forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await navigateTo(new URL(link.href, window.location.origin).pathname);
+    });
+  });
 
   element<HTMLFormElement>("vehicle-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -711,10 +791,10 @@ async function loadUserDashboard(): Promise<void> {
       await api("/api/vehicles", {
         method: "POST",
         body: JSON.stringify({
-          make: element<HTMLInputElement>("vehicle-make").value,
-          model: element<HTMLInputElement>("vehicle-model").value,
+          make: element<HTMLInputElement>("vehicle-make").value.trim(),
+          model: element<HTMLInputElement>("vehicle-model").value.trim(),
           year: Number(element<HTMLInputElement>("vehicle-year").value),
-          plate: null,
+          plate: element<HTMLInputElement>("vehicle-plate").value.trim() || null,
         }),
       });
       showMessage("Véhicule ajouté.", "success");
@@ -725,48 +805,360 @@ async function loadUserDashboard(): Promise<void> {
   });
 }
 
-async function loadGarageDashboard(): Promise<void> {
+async function loadGarageDashboard(activeTab = "overview"): Promise<void> {
   const data = await api<any>("/api/garage/dashboard");
   const content = element<HTMLDivElement>("dashboard-content");
+  const garages = data.garages || [];
+  const bookings = data.bookings || [];
+  const stats = data.stats || {};
+
+  if (!garages.length) {
+    content.innerHTML = `
+      <div class="dashboard-shell">
+        <div class="dashboard-welcome garage-dashboard-hero">
+          <div><span class="dashboard-kicker">ESPACE PROFESSIONNEL</span><h3>Aucun garage associé</h3><p>Votre compte professionnel n'est encore rattaché à aucun établissement.</p></div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const serviceOptions = garages
+    .map((garage: any) => `<option value="${garage.id}">${safeText(garage.name)}</option>`)
+    .join("");
+  const allServices = garages.flatMap((garage: any) =>
+    (garage.service_items || []).map((service: any) => ({ ...service, garage_id: garage.id, garage_name: garage.name })),
+  );
+  const allSlots = garages.flatMap((garage: any) =>
+    (garage.slot_items || []).map((slot: any) => ({ ...slot, garage_id: garage.id, garage_name: garage.name })),
+  );
+  const nextBookings = [...bookings]
+    .filter((booking: any) => booking.status === "CONFIRMED" && new Date(booking.starts_at).getTime() >= Date.now())
+    .sort((a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
   content.innerHTML = `
-    <div class="dashboard-grid">
-      <article class="panel">
-        <h3>Mes garages</h3>
-        ${
-          data.garages.length
-            ? data.garages
-                .map(
-                  (garage: any) => `
-                    <p>
-                      <strong>${safeText(garage.name)}</strong> - ${safeText(garage.city)}<br>
-                      <small>${garage.services} prestation(s) · ${garage.verified ? "vérifié" : "en attente"}</small>
-                    </p>
-                  `,
-                )
-                .join("")
-            : "<p>Aucun garage associé.</p>"
-        }
-      </article>
-      <article class="panel">
-        <h3>Réservations récentes</h3>
-        ${
-          data.bookings.length
-            ? data.bookings
-                .map(
-                  (booking: any) => `
-                    <p>
-                      <strong>#${booking.id} ${safeText(booking.service)}</strong><br>
-                      <small>${new Date(booking.starts_at).toLocaleString("fr-FR")} · ${safeText(booking.status)}</small>
-                    </p>
-                  `,
-                )
-                .join("")
-            : "<p>Aucune réservation.</p>"
-        }
-      </article>
+    <div class="dashboard-shell garage-workspace">
+      <div class="dashboard-welcome garage-dashboard-hero">
+        <div>
+          <span class="dashboard-kicker">PILOTAGE DE L'ATELIER</span>
+          <h3>${safeText(garages[0].name)}</h3>
+          <p>${safeText(garages[0].city)} · Gérez vos prestations, disponibilités et rendez-vous depuis un seul écran.</p>
+        </div>
+        <div class="garage-hero-status"><span class="status-pill ${garages[0].verified ? "verified" : "pending"}">${garages[0].verified ? "✓ Garage vérifié" : "Vérification en attente"}</span><small>${safeText(state.user?.email || "")}</small></div>
+      </div>
+
+      <div class="dashboard-kpis garage-kpis">
+        <article><span>Rendez-vous</span><strong>${stats.upcoming || 0}</strong><small>à venir</small></article>
+        <article><span>Prestations</span><strong>${stats.services || 0}</strong><small>au catalogue</small></article>
+        <article><span>Créneaux</span><strong>${stats.available_slots || 0}</strong><small>encore disponibles</small></article>
+        <article><span>Acomptes reçus</span><strong>${formatPrice(Number(stats.deposits_received || 0))}</strong><small>paiements validés</small></article>
+      </div>
+
+      <nav class="workspace-tabs" aria-label="Gestion du garage">
+        <button type="button" data-dashboard-tab="overview">Vue d'ensemble</button>
+        <button type="button" data-dashboard-tab="services">Prestations <span>${allServices.length}</span></button>
+        <button type="button" data-dashboard-tab="slots">Créneaux <span>${allSlots.filter((slot: any) => !slot.is_booked).length}</span></button>
+        <button type="button" data-dashboard-tab="bookings">Réservations <span>${bookings.length}</span></button>
+        <button type="button" data-dashboard-tab="profile">Mon garage</button>
+      </nav>
+
+      <section class="workspace-panel" data-dashboard-panel="overview">
+        <div class="dashboard-grid garage-overview-grid">
+          <article class="panel dashboard-panel">
+            <div class="panel-heading"><div><span class="panel-label">PROCHAINS RENDEZ-VOUS</span><h3>Planning à venir</h3></div><span>${nextBookings.length} rendez-vous</span></div>
+            <div class="booking-list compact-booking-list">
+              ${nextBookings.length
+                ? nextBookings.slice(0, 6).map((booking: any) => `
+                  <article class="booking-card status-confirmed">
+                    <div class="booking-card-head"><div><strong>${safeText(booking.customer?.name || "Client")}</strong><span>#${booking.id}</span></div><span class="status-pill verified">Confirmée</span></div>
+                    <h4>${safeText(booking.service)}</h4>
+                    <p>${formatDateTime(booking.starts_at)} · ${booking.vehicle ? `${safeText(booking.vehicle.make)} ${safeText(booking.vehicle.model)}` : "Véhicule non renseigné"}</p>
+                  </article>
+                `).join("")
+                : '<div class="empty-state"><strong>Aucun rendez-vous confirmé</strong><span>Les réservations payées apparaîtront automatiquement ici.</span></div>'}
+            </div>
+          </article>
+          <article class="panel dashboard-panel activity-panel">
+            <div class="panel-heading"><div><span class="panel-label">ACTIVITÉ</span><h3>Résumé de l'atelier</h3></div></div>
+            <div class="activity-metrics">
+              <div><span>Réservations totales</span><strong>${stats.bookings || 0}</strong></div>
+              <div><span>Confirmées</span><strong>${stats.confirmed || 0}</strong></div>
+              <div><span>Terminées</span><strong>${stats.completed || 0}</strong></div>
+              <div><span>Garages gérés</span><strong>${garages.length}</strong></div>
+            </div>
+            <div class="activity-callout"><strong>Tout est synchronisé</strong><p>Une réservation payée côté client apparaît ici sans ressaisie. Le statut peut ensuite être clôturé par l'atelier.</p></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-panel" data-dashboard-panel="services" hidden>
+        <div class="management-layout">
+          <article class="panel dashboard-panel management-create-card">
+            <div class="panel-heading"><div><span class="panel-label">NOUVELLE PRESTATION</span><h3>Ajouter au catalogue</h3></div></div>
+            <form id="service-create-form" class="management-form">
+              ${garages.length > 1 ? `<label>Garage<select id="service-garage">${serviceOptions}</select></label>` : `<input id="service-garage" type="hidden" value="${garages[0].id}">`}
+              <label>Nom<input id="service-name" required maxlength="120" placeholder="Diagnostic électronique"></label>
+              <label>Description<textarea id="service-description" rows="4" maxlength="1000" placeholder="Décrivez clairement ce qui est inclus..."></textarea></label>
+              <div class="form-grid two-cols"><label>Prix TTC (€)<input id="service-price" type="number" min="1" step="0.01" required></label><label>Durée (min)<input id="service-duration" type="number" min="15" max="1440" step="5" value="60" required></label></div>
+              <button class="btn" type="submit">Ajouter la prestation</button>
+            </form>
+          </article>
+          <div class="management-list service-management-list">
+            ${allServices.length
+              ? allServices.map((service: any) => `
+                <form class="panel management-item service-edit-form" data-service-form="${service.id}">
+                  <div class="management-item-head"><div><span class="panel-label">${safeText(service.garage_name)}</span><h3>${safeText(service.name)}</h3></div><strong>${formatPrice(service.price)}</strong></div>
+                  <label>Nom<input name="name" value="${safeAttr(service.name)}" required maxlength="120"></label>
+                  <label>Description<textarea name="description" rows="3" maxlength="1000">${safeText(service.description || "")}</textarea></label>
+                  <div class="form-grid two-cols"><label>Prix (€)<input name="price" type="number" min="1" step="0.01" value="${Number(service.price)}" required></label><label>Durée (min)<input name="duration" type="number" min="15" max="1440" step="5" value="${Number(service.duration_minutes)}" required></label></div>
+                  <div class="management-actions"><button class="btn" type="submit">Enregistrer</button><button class="btn danger-outline" type="button" data-delete-service="${service.id}">Supprimer</button></div>
+                </form>
+              `).join("")
+              : '<div class="empty-state"><strong>Aucune prestation</strong><span>Ajoutez votre première prestation avec le formulaire.</span></div>'}
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace-panel" data-dashboard-panel="slots" hidden>
+        <div class="management-layout">
+          <article class="panel dashboard-panel management-create-card">
+            <div class="panel-heading"><div><span class="panel-label">PLANNING</span><h3>Ouvrir un créneau</h3></div></div>
+            <form id="slot-create-form" class="management-form">
+              ${garages.length > 1 ? `<label>Garage<select id="slot-garage">${serviceOptions}</select></label>` : `<input id="slot-garage" type="hidden" value="${garages[0].id}">`}
+              <label>Date et heure<input id="slot-start" type="datetime-local" required></label>
+              <label>Durée<select id="slot-duration"><option value="30">30 min</option><option value="45">45 min</option><option value="60" selected>1 h</option><option value="90">1 h 30</option><option value="120">2 h</option></select></label>
+              <button class="btn" type="submit">Publier le créneau</button>
+            </form>
+          </article>
+          <article class="panel dashboard-panel">
+            <div class="panel-heading"><div><span class="panel-label">DISPONIBILITÉS</span><h3>Prochains créneaux</h3></div><span>${allSlots.length} affiché(s)</span></div>
+            <div class="slot-list">
+              ${allSlots.length
+                ? allSlots.map((slot: any) => `
+                  <div class="slot-management-row ${slot.is_booked ? "slot-booked" : ""}">
+                    <div><strong>${formatDateTime(slot.starts_at)}</strong><small>${safeText(slot.garage_name)} · jusqu'à ${new Date(slot.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</small></div>
+                    ${slot.is_booked ? '<span class="status-pill verified">Réservé</span>' : `<button class="btn small danger-outline" type="button" data-delete-slot="${slot.id}">Supprimer</button>`}
+                  </div>
+                `).join("")
+                : '<div class="empty-state"><strong>Aucun créneau à venir</strong><span>Publiez une disponibilité pour recevoir de nouvelles réservations.</span></div>'}
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-panel" data-dashboard-panel="bookings" hidden>
+        <article class="panel dashboard-panel">
+          <div class="panel-heading"><div><span class="panel-label">RENDEZ-VOUS</span><h3>Réservations clients</h3></div><span>${bookings.length} réservation(s)</span></div>
+          <div class="booking-management-list">
+            ${bookings.length
+              ? bookings.map((booking: any) => `
+                <article class="booking-management-card ${bookingStatusClass(booking.status)}">
+                  <div class="booking-management-main">
+                    <div class="booking-card-head"><div><strong>#${booking.id} · ${safeText(booking.service)}</strong><span>${safeText(booking.garage)}</span></div><span class="status-pill ${booking.status === "CONFIRMED" ? "verified" : booking.status === "PENDING_PAYMENT" ? "pending" : ""}">${safeText(bookingStatusLabel(booking.status))}</span></div>
+                    <div class="booking-detail-grid">
+                      <div><span>Client</span><strong>${safeText(booking.customer?.name || "-")}</strong><small>${safeText(booking.customer?.email || "")}</small></div>
+                      <div><span>Véhicule</span><strong>${booking.vehicle ? `${safeText(booking.vehicle.make)} ${safeText(booking.vehicle.model)}` : "Non renseigné"}</strong><small>${booking.vehicle?.plate ? safeText(booking.vehicle.plate) : ""}</small></div>
+                      <div><span>Rendez-vous</span><strong>${formatDateTime(booking.starts_at)}</strong><small>Acompte ${formatPrice(booking.deposit_amount)}</small></div>
+                      <div><span>Paiement</span><strong>${booking.payment_status === "SUCCEEDED" ? "Validé" : "En attente"}</strong><small>Total prestation ${formatPrice(booking.total_amount)}</small></div>
+                    </div>
+                  </div>
+                  <div class="booking-actions">
+                    ${booking.status === "CONFIRMED" ? `<button class="btn small" type="button" data-booking-status="COMPLETED" data-booking-id="${booking.id}">Marquer terminée</button><button class="btn small danger-outline" type="button" data-booking-status="CANCELLED" data-booking-id="${booking.id}">Annuler</button>` : ""}
+                    ${booking.status === "PENDING_PAYMENT" ? `<span class="waiting-note">En attente du paiement client</span><button class="btn small danger-outline" type="button" data-booking-status="CANCELLED" data-booking-id="${booking.id}">Annuler</button>` : ""}
+                  </div>
+                </article>
+              `).join("")
+              : '<div class="empty-state"><strong>Aucune réservation</strong><span>Les commandes clients apparaîtront ici.</span></div>'}
+          </div>
+        </article>
+      </section>
+
+      <section class="workspace-panel" data-dashboard-panel="profile" hidden>
+        <div class="profile-management-grid">
+          ${garages.map((garage: any) => `
+            <form class="panel dashboard-panel garage-profile-form" data-garage-profile="${garage.id}">
+              <div class="panel-heading"><div><span class="panel-label">FICHE PUBLIQUE</span><h3>${safeText(garage.name)}</h3></div><span class="status-pill ${garage.verified ? "verified" : "pending"}">${garage.verified ? "Vérifié" : "En attente"}</span></div>
+              <div class="form-grid two-cols"><label>Nom du garage<input name="name" value="${safeAttr(garage.name)}" required></label><label>Ville<input name="city" value="${safeAttr(garage.city)}" required></label></div>
+              <label>Adresse<input name="address" value="${safeAttr(garage.address)}" required></label>
+              <label>Description<textarea name="description" rows="5" required>${safeText(garage.description || "")}</textarea></label>
+              <label>Spécialités <small>séparées par des virgules</small><input name="specialties" value="${safeAttr(garage.specialties || "")}"></label>
+              <label>Marques prises en charge <small>séparées par des virgules</small><input name="brands" value="${safeAttr(garage.brands || "")}"></label>
+              <label>Taux horaire indicatif (€)<input name="hourly_rate" type="number" min="1" max="1000" step="0.01" value="${garage.hourly_rate ?? ""}"></label>
+              <div class="management-actions"><button class="btn" type="submit">Enregistrer la fiche</button><a class="btn secondary" href="/garages/${garage.id}" data-dashboard-link>Voir la fiche publique</a></div>
+            </form>
+          `).join("")}
+        </div>
+      </section>
     </div>
   `;
+
+  const activateTab = (tab: string) => {
+    content.querySelectorAll<HTMLButtonElement>("[data-dashboard-tab]").forEach((button) => {
+      const selected = button.dataset.dashboardTab === tab;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", String(selected));
+    });
+    content.querySelectorAll<HTMLElement>("[data-dashboard-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.dashboardPanel !== tab;
+    });
+  };
+  activateTab(activeTab);
+
+  content.querySelectorAll<HTMLButtonElement>("[data-dashboard-tab]").forEach((button) => {
+    button.addEventListener("click", () => activateTab(button.dataset.dashboardTab || "overview"));
+  });
+
+  content.querySelectorAll<HTMLAnchorElement>("[data-dashboard-link]").forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const target = new URL(link.href, window.location.origin);
+      await navigateTo(target.pathname);
+    });
+  });
+
+  element<HTMLFormElement>("service-create-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api("/api/services", {
+        method: "POST",
+        body: JSON.stringify({
+          garage_id: Number(element<HTMLInputElement | HTMLSelectElement>("service-garage").value),
+          name: element<HTMLInputElement>("service-name").value.trim(),
+          description: element<HTMLTextAreaElement>("service-description").value.trim() || null,
+          price: Number(element<HTMLInputElement>("service-price").value),
+          duration_minutes: Number(element<HTMLInputElement>("service-duration").value),
+        }),
+      });
+      showMessage("Prestation ajoutée au catalogue.", "success");
+      await loadGarageDashboard("services");
+    } catch (error) {
+      showMessage((error as Error).message, "error");
+    }
+  });
+
+  content.querySelectorAll<HTMLFormElement>("[data-service-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const serviceId = Number(form.dataset.serviceForm);
+      const formData = new FormData(form);
+      try {
+        await api(`/api/services/${serviceId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: String(formData.get("name") || "").trim(),
+            description: String(formData.get("description") || "").trim() || null,
+            price: Number(formData.get("price")),
+            duration_minutes: Number(formData.get("duration")),
+          }),
+        });
+        showMessage("Prestation mise à jour.", "success");
+        await loadGarageDashboard("services");
+      } catch (error) {
+        showMessage((error as Error).message, "error");
+      }
+    });
+  });
+
+  content.querySelectorAll<HTMLButtonElement>("[data-delete-service]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Supprimer cette prestation ?")) return;
+      try {
+        await api(`/api/services/${Number(button.dataset.deleteService)}`, { method: "DELETE" });
+        showMessage("Prestation supprimée.", "success");
+        await loadGarageDashboard("services");
+      } catch (error) {
+        showMessage((error as Error).message, "error");
+      }
+    });
+  });
+
+  element<HTMLFormElement>("slot-create-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const startsAt = element<HTMLInputElement>("slot-start").value;
+    const duration = Number(element<HTMLSelectElement>("slot-duration").value);
+    if (!startsAt) return;
+    const startDate = new Date(startsAt);
+    const endDate = new Date(startDate.getTime() + duration * 60_000);
+    const toLocalDateTime = (date: Date) => {
+      const pad = (value: number) => String(value).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
+    };
+    try {
+      await api("/api/availability", {
+        method: "POST",
+        body: JSON.stringify({
+          garage_id: Number(element<HTMLInputElement | HTMLSelectElement>("slot-garage").value),
+          starts_at: `${startsAt}:00`,
+          ends_at: toLocalDateTime(endDate),
+        }),
+      });
+      showMessage("Créneau publié.", "success");
+      await loadGarageDashboard("slots");
+    } catch (error) {
+      showMessage((error as Error).message, "error");
+    }
+  });
+
+  content.querySelectorAll<HTMLButtonElement>("[data-delete-slot]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Supprimer ce créneau disponible ?")) return;
+      try {
+        await api(`/api/availability/${Number(button.dataset.deleteSlot)}`, { method: "DELETE" });
+        showMessage("Créneau supprimé.", "success");
+        await loadGarageDashboard("slots");
+      } catch (error) {
+        showMessage((error as Error).message, "error");
+      }
+    });
+  });
+
+  content.querySelectorAll<HTMLButtonElement>("[data-booking-status]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const bookingId = Number(button.dataset.bookingId);
+      const status = button.dataset.bookingStatus || "";
+      const confirmation = status === "COMPLETED"
+        ? "Marquer cette intervention comme terminée ?"
+        : "Annuler cette réservation ?";
+      if (!window.confirm(confirmation)) return;
+      try {
+        await api(`/api/bookings/${bookingId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        });
+        showMessage(status === "COMPLETED" ? "Intervention terminée." : "Réservation annulée.", "success");
+        await loadGarageDashboard("bookings");
+      } catch (error) {
+        showMessage((error as Error).message, "error");
+      }
+    });
+  });
+
+  content.querySelectorAll<HTMLFormElement>("[data-garage-profile]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const garageId = Number(form.dataset.garageProfile);
+      const formData = new FormData(form);
+      const hourlyRate = String(formData.get("hourly_rate") || "").trim();
+      try {
+        await api(`/api/garages/${garageId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: String(formData.get("name") || "").trim(),
+            city: String(formData.get("city") || "").trim(),
+            address: String(formData.get("address") || "").trim(),
+            description: String(formData.get("description") || "").trim(),
+            specialties: String(formData.get("specialties") || "").trim(),
+            brands: String(formData.get("brands") || "").trim(),
+            hourly_rate: hourlyRate ? Number(hourlyRate) : null,
+          }),
+        });
+        showMessage("Fiche garage mise à jour.", "success");
+        await loadGarageDashboard("profile");
+      } catch (error) {
+        showMessage((error as Error).message, "error");
+      }
+    });
+  });
 }
 
 async function loadAdminDashboard(): Promise<void> {
@@ -777,6 +1169,7 @@ async function loadAdminDashboard(): Promise<void> {
 
   const content = element<HTMLDivElement>("dashboard-content");
   content.innerHTML = `
+    <div class="dashboard-shell admin-dashboard-shell">
     <div class="admin-intro panel">
       <div><span class="admin-kicker">SUPERVISION DE LA PLATEFORME</span><h3>Vue d'ensemble MecaConnect</h3><p>Suivez les comptes, les garages partenaires, les réservations et les paiements depuis cet espace sécurisé.</p></div>
       <a class="btn secondary" href="/api/docs">Ouvrir Swagger</a>
@@ -801,6 +1194,7 @@ async function loadAdminDashboard(): Promise<void> {
           ? data.bookings.slice(0, 10).map((booking: any) => `<div class="admin-row"><div><strong>#${booking.id} · ${safeText(booking.service)}</strong><small>${safeText(booking.garage)} · ${new Date(booking.starts_at).toLocaleString("fr-FR")}</small></div><span class="status-pill">${safeText(booking.status)}</span></div>`).join("")
           : "<p>Aucune réservation récente.</p>"}</div>
       </article>
+    </div>
     </div>
   `;
 }

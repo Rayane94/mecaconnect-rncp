@@ -254,3 +254,125 @@ def test_assistant_only_recommends_relevant_garages(client):
         specialties = {item.lower() for item in garage["specialties"]}
         service_name = ((garage.get("service_hint") or {}).get("name") or "").lower()
         assert "freinage" in specialties or "frein" in service_name or "plaquette" in service_name or "disque" in service_name
+
+
+def test_garage_can_manage_catalog_and_slots(client):
+    login(
+        client,
+        email="garage@mecaconnect.example.com",
+        password="Garage-ChangeMe-2026!",
+    )
+    dashboard = client.get("/api/garage/dashboard")
+    assert dashboard.status_code == 200
+    data = dashboard.json()
+    assert data["garages"]
+    garage_id = data["garages"][0]["id"]
+    assert "stats" in data
+    assert "service_items" in data["garages"][0]
+
+    created = client.post(
+        "/api/services",
+        json={
+            "garage_id": garage_id,
+            "name": "Contrôle présentation",
+            "description": "Prestation temporaire créée pour vérifier la gestion du catalogue.",
+            "price": 49.0,
+            "duration_minutes": 30,
+        },
+    )
+    assert created.status_code == 201
+    service_id = created.json()["id"]
+
+    updated = client.patch(
+        f"/api/services/{service_id}",
+        json={"price": 59.0, "duration_minutes": 45},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["price"] == 59.0
+    assert updated.json()["duration_minutes"] == 45
+
+    deleted = client.delete(f"/api/services/{service_id}")
+    assert deleted.status_code == 204
+
+    slot = client.post(
+        "/api/availability",
+        json={
+            "garage_id": garage_id,
+            "starts_at": "2030-01-15T10:00:00",
+            "ends_at": "2030-01-15T11:00:00",
+        },
+    )
+    assert slot.status_code == 201
+    slot_id = slot.json()["id"]
+    assert client.delete(f"/api/availability/{slot_id}").status_code == 204
+
+
+def test_garage_can_update_public_profile(client):
+    login(
+        client,
+        email="garage@mecaconnect.example.com",
+        password="Garage-ChangeMe-2026!",
+    )
+    garage = client.get("/api/garage/dashboard").json()["garages"][0]
+    response = client.patch(
+        f"/api/garages/{garage['id']}",
+        json={
+            "description": "Garage Berthier, atelier partenaire MecaConnect pour l'entretien et le diagnostic automobile.",
+            "hourly_rate": 94.0,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["hourly_rate"] == 94.0
+
+
+def test_garage_can_complete_paid_booking(client):
+    login(
+        client,
+        email="garage@mecaconnect.example.com",
+        password="Garage-ChangeMe-2026!",
+    )
+    garage = client.get("/api/garage/dashboard").json()["garages"][0]
+    garage_id = garage["id"]
+    service_id = garage["service_items"][0]["id"]
+    slot = client.post(
+        "/api/availability",
+        json={
+            "garage_id": garage_id,
+            "starts_at": "2031-02-20T09:00:00",
+            "ends_at": "2031-02-20T10:00:00",
+        },
+    )
+    assert slot.status_code == 201
+    slot_id = slot.json()["id"]
+    client.post("/api/auth/logout")
+
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "garage-flow-user@example.com",
+            "password": "GarageFlowUser-2026!",
+            "full_name": "Client Garage Flow",
+        },
+    )
+    booking = client.post(
+        "/api/bookings",
+        json={"service_id": service_id, "slot_id": slot_id, "vehicle_id": None},
+    )
+    assert booking.status_code == 201
+    booking_id = booking.json()["id"]
+    payment = client.post(f"/api/payments/{booking_id}/session")
+    assert payment.status_code == 200
+    assert client.post(f"/api/payments/test/{booking_id}/confirm").status_code == 200
+    client.post("/api/auth/logout")
+
+    login(
+        client,
+        email="garage@mecaconnect.example.com",
+        password="Garage-ChangeMe-2026!",
+    )
+    completed = client.patch(
+        f"/api/bookings/{booking_id}/status",
+        json={"status": "COMPLETED"},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "COMPLETED"

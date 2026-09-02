@@ -63,3 +63,11 @@ test('MecaBot assistant and IDF map are present',()=>{
   assert.doesNotMatch(html,/mapbox/i);
   assert.doesNotMatch(appSource,/mapbox/i);
 });
+
+test('navigation exposes home and garage workspace management',()=>{
+  assert.match(html,/>Accueil<\/a>/);
+  assert.match(html,/Retour à l'accueil/);
+  for(const token of ['/api/services/','/api/availability/','/api/bookings/','data-dashboard-tab="services"']) {
+    assert.ok(appSource.includes(token));
+  }
+});

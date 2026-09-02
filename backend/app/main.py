@@ -488,6 +488,32 @@ def create_garage(
     return {"id": garage.id, "slug": garage.slug}
 
 
+@app.patch("/api/garages/{garage_id}")
+def update_garage(
+    garage_id: int,
+    payload: schemas.GarageUpdateIn,
+    user: models.User = Depends(require_roles("GARAGE", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage:
+        raise HTTPException(status_code=404, detail="Garage introuvable")
+
+    if user.role != "ADMIN" and garage.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Ce garage ne vous appartient pas")
+
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        if isinstance(value, str):
+            value = value.strip()
+        setattr(garage, field, value)
+
+    db.commit()
+    db.refresh(garage)
+    add_audit_log(db, user.id, "UPDATE", "garage", str(garage.id))
+    return garage_to_dict(garage)
+
+
 @app.post("/api/services", status_code=201)
 def create_service(
     payload: schemas.ServiceIn,
@@ -508,6 +534,65 @@ def create_service(
 
     add_audit_log(db, user.id, "CREATE", "service", str(service.id))
     return {"id": service.id}
+
+
+@app.patch("/api/services/{service_id}")
+def update_service(
+    service_id: int,
+    payload: schemas.ServiceUpdateIn,
+    user: models.User = Depends(require_roles("GARAGE", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    service = db.get(models.Service, service_id)
+    if not service:
+        raise HTTPException(status_code=404, detail="Prestation introuvable")
+
+    if user.role != "ADMIN" and service.garage.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Cette prestation ne vous appartient pas")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if isinstance(value, str):
+            value = value.strip()
+        setattr(service, field, value)
+
+    db.commit()
+    db.refresh(service)
+    add_audit_log(db, user.id, "UPDATE", "service", str(service.id))
+    return {
+        "id": service.id,
+        "name": service.name,
+        "description": service.description,
+        "price": service.price,
+        "duration_minutes": service.duration_minutes,
+    }
+
+
+@app.delete("/api/services/{service_id}", status_code=204)
+def delete_service(
+    service_id: int,
+    user: models.User = Depends(require_roles("GARAGE", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    service = db.get(models.Service, service_id)
+    if not service:
+        raise HTTPException(status_code=404, detail="Prestation introuvable")
+
+    if user.role != "ADMIN" and service.garage.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Cette prestation ne vous appartient pas")
+
+    booking_count = db.scalar(
+        select(func.count(models.Booking.id)).where(models.Booking.service_id == service.id)
+    ) or 0
+    if booking_count:
+        raise HTTPException(
+            status_code=409,
+            detail="Cette prestation possède déjà des réservations et ne peut pas être supprimée",
+        )
+
+    db.delete(service)
+    db.commit()
+    add_audit_log(db, user.id, "DELETE", "service", str(service_id))
+    return Response(status_code=204)
 
 
 @app.post("/api/availability", status_code=201)
@@ -541,6 +626,31 @@ def create_availability(
         "starts_at": slot.starts_at,
         "ends_at": slot.ends_at,
     }
+
+
+@app.delete("/api/availability/{slot_id}", status_code=204)
+def delete_availability(
+    slot_id: int,
+    user: models.User = Depends(require_roles("GARAGE", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    slot = db.get(models.Availability, slot_id)
+    if not slot:
+        raise HTTPException(status_code=404, detail="Créneau introuvable")
+
+    if user.role != "ADMIN" and slot.garage.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Ce créneau ne vous appartient pas")
+
+    if slot.is_booked:
+        raise HTTPException(
+            status_code=409,
+            detail="Un créneau réservé ne peut pas être supprimé",
+        )
+
+    db.delete(slot)
+    db.commit()
+    add_audit_log(db, user.id, "DELETE", "availability", str(slot_id))
+    return Response(status_code=204)
 
 
 @app.get("/api/availability")
@@ -644,6 +754,44 @@ def my_bookings(
     ]
 
 
+@app.patch("/api/bookings/{booking_id}/status")
+def update_booking_status(
+    booking_id: int,
+    payload: schemas.BookingStatusIn,
+    user: models.User = Depends(require_roles("GARAGE", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    booking = db.get(models.Booking, booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Réservation introuvable")
+
+    garage = booking.service.garage
+    if user.role != "ADMIN" and garage.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Cette réservation ne vous appartient pas")
+
+    requested = payload.status
+    if requested == booking.status:
+        return {"id": booking.id, "status": booking.status}
+
+    allowed_transitions = {
+        "PENDING_PAYMENT": {"CANCELLED"},
+        "CONFIRMED": {"COMPLETED", "CANCELLED"},
+        "COMPLETED": set(),
+        "CANCELLED": set(),
+    }
+    allowed = allowed_transitions.get(booking.status, set())
+    if requested not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Passage de {booking.status} vers {requested} non autorisé",
+        )
+
+    booking.status = requested
+    db.commit()
+    add_audit_log(db, user.id, "UPDATE_STATUS", "booking", f"{booking.id}:{requested}")
+    return {"id": booking.id, "status": booking.status}
+
+
 @app.get("/api/garage/dashboard")
 def garage_dashboard(
     user: models.User = Depends(require_roles("GARAGE", "ADMIN")),
@@ -655,39 +803,122 @@ def garage_dashboard(
 
     garages = db.scalars(query.order_by(models.Garage.name)).all()
     garage_ids = [garage.id for garage in garages]
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    bookings = []
+    bookings: list[dict] = []
+    all_bookings: list[models.Booking] = []
     if garage_ids:
         booking_query = (
             select(models.Booking)
             .join(models.Service)
             .where(models.Service.garage_id.in_(garage_ids))
             .order_by(models.Booking.created_at.desc())
-            .limit(25)
+            .limit(100)
         )
-        for booking in db.scalars(booking_query).all():
+        all_bookings = list(db.scalars(booking_query).all())
+        for booking in all_bookings:
+            vehicle = db.get(models.Vehicle, booking.vehicle_id) if booking.vehicle_id else None
             bookings.append(
                 {
                     "id": booking.id,
+                    "garage_id": booking.service.garage_id,
                     "garage": booking.service.garage.name,
                     "service": booking.service.name,
                     "status": booking.status,
                     "starts_at": booking.slot.starts_at,
+                    "total_amount": booking.total_amount,
                     "deposit_amount": booking.deposit_amount,
+                    "payment_status": booking.payment.status if booking.payment else None,
+                    "customer": {
+                        "name": booking.user.full_name,
+                        "email": booking.user.email,
+                    },
+                    "vehicle": (
+                        {
+                            "make": vehicle.make,
+                            "model": vehicle.model,
+                            "year": vehicle.year,
+                            "plate": vehicle.plate,
+                        }
+                        if vehicle
+                        else None
+                    ),
                 }
             )
 
-    return {
-        "garages": [
+    garage_payload = []
+    available_slots = 0
+    service_count = 0
+    for garage in garages:
+        service_items = [
+            {
+                "id": service.id,
+                "name": service.name,
+                "description": service.description,
+                "price": service.price,
+                "duration_minutes": service.duration_minutes,
+            }
+            for service in sorted(garage.services, key=lambda item: item.name.lower())
+        ]
+        slot_items = [
+            {
+                "id": slot.id,
+                "starts_at": slot.starts_at,
+                "ends_at": slot.ends_at,
+                "is_booked": slot.is_booked,
+            }
+            for slot in sorted(
+                (slot for slot in garage.slots if slot.starts_at >= now),
+                key=lambda item: item.starts_at,
+            )[:80]
+        ]
+        service_count += len(service_items)
+        available_slots += sum(1 for slot in slot_items if not slot["is_booked"])
+        garage_payload.append(
             {
                 "id": garage.id,
                 "name": garage.name,
                 "city": garage.city,
+                "address": garage.address,
+                "description": garage.description,
                 "verified": garage.verified,
-                "services": len(garage.services),
+                "rating": garage.rating,
+                "specialties": garage.specialties,
+                "brands": garage.brands,
+                "hourly_rate": garage.hourly_rate,
+                "services": len(service_items),
+                "service_items": service_items,
+                "slot_items": slot_items,
             }
-            for garage in garages
-        ],
+        )
+
+    confirmed = sum(1 for booking in all_bookings if booking.status == "CONFIRMED")
+    completed = sum(1 for booking in all_bookings if booking.status == "COMPLETED")
+    upcoming = sum(
+        1
+        for booking in all_bookings
+        if booking.status == "CONFIRMED" and booking.slot.starts_at >= now
+    )
+    deposits_received = round(
+        sum(
+            booking.deposit_amount
+            for booking in all_bookings
+            if booking.payment and booking.payment.status == "SUCCEEDED"
+        ),
+        2,
+    )
+
+    return {
+        "stats": {
+            "bookings": len(all_bookings),
+            "confirmed": confirmed,
+            "upcoming": upcoming,
+            "completed": completed,
+            "services": service_count,
+            "available_slots": available_slots,
+            "deposits_received": deposits_received,
+        },
+        "garages": garage_payload,
         "bookings": bookings,
     }
 
