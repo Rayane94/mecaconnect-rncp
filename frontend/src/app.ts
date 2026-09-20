@@ -21,6 +21,9 @@ type Service = {
   description: string | null;
   price: number;
   duration_minutes: number;
+  price_label?: string | null;
+  bookable?: boolean;
+  source_url?: string | null;
 };
 
 type GarageDetail = Garage & {
@@ -420,23 +423,42 @@ function renderGarages(garages: Garage[]): void {
 
   for (const garage of garages) {
     const card = document.createElement("article");
-    card.className = "garage-card";
+    card.className = "garage-card sourced-garage-card";
+    const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
+    const badge = isClaimed ? "✓ Garage connecté" : "✓ SIRET vérifié";
+    const rating = garage.rating > 0
+      ? `<p class="rating" aria-label="Note publiée ${garage.rating} sur 5">${stars(garage.rating)} <span>${garage.rating.toFixed(1)}</span></p>`
+      : '<p class="rating muted-rating">Note non publiée</p>';
+    const photo = garage.photo_url
+      ? `<div class="garage-card-media"><img data-garage-photo src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}" loading="lazy"></div>`
+      : '<div class="garage-card-media garage-photo-placeholder" aria-hidden="true"><span>GARAGE</span></div>';
     card.innerHTML = `
-      <div class="garage-badge">${garage.verified ? "✓ Vérifié" : "Partenaire"}</div>
-      <h3>${safeText(garage.name)}</h3>
-      <p class="rating" aria-label="Note ${garage.rating} sur 5">
-        ${stars(garage.rating)} <span>${garage.rating.toFixed(1)}</span>
-      </p>
-      <p><strong>${safeText(garage.city)}</strong>${garage.department ? ` (${safeText(garage.department)})` : ""} · ${safeText(garage.address)}</p>
-      <div class="specialty-list">${(garage.specialties || []).slice(0, 4).map((item) => `<span>${safeText(item)}</span>`).join("")}</div>
-      <p>${safeText(garage.description)}</p>
-      <div class="garage-actions">
-        <button class="btn secondary" data-garage="${garage.id}">Voir les prestations</button>
-        <button class="link-button map-link" type="button" data-map-garage="${garage.id}">Voir sur la carte</button>
+      ${photo}
+      <div class="garage-card-body">
+        <div class="garage-badge">${badge}</div>
+        <h3>${safeText(garage.name)}</h3>
+        ${rating}
+        <p><strong>${safeText(garage.city)}</strong>${garage.department ? ` (${safeText(garage.department)})` : ""} · ${safeText(garage.address)}</p>
+        <div class="specialty-list">${(garage.specialties || []).slice(0, 4).map((item) => `<span>${safeText(item)}</span>`).join("")}</div>
+        <p class="source-note">${isClaimed ? "Établissement connecté à MecaConnect." : "Établissement réel référencé à partir de sources publiques et officielles. Aucun partenariat n’est sous-entendu."}</p>
+        <div class="garage-actions">
+          <button class="btn secondary" data-garage="${garage.id}">Voir la fiche</button>
+          <button class="link-button map-link" type="button" data-map-garage="${garage.id}">Voir sur la carte</button>
+        </div>
       </div>
     `;
     grid.append(card);
   }
+
+  grid.querySelectorAll<HTMLImageElement>("[data-garage-photo]").forEach((image) => {
+    image.addEventListener("error", () => {
+      const wrapper = image.closest(".garage-card-media");
+      if (wrapper) {
+        wrapper.classList.add("garage-photo-placeholder");
+        wrapper.innerHTML = "<span>GARAGE</span>";
+      }
+    });
+  });
 
   grid.querySelectorAll<HTMLButtonElement>("[data-garage]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -472,10 +494,49 @@ async function loadGarageDetail(id: number): Promise<void> {
   element<HTMLParagraphElement>("garage-address").textContent =
     `${garage.address} - ${garage.city}`;
 
+  const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
+  const media = element<HTMLDivElement>("garage-detail-media");
+  media.innerHTML = garage.photo_url
+    ? `<img id="garage-detail-photo" src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}">`
+    : '<div class="garage-detail-placeholder">GARAGE</div>';
+  const detailImage = document.getElementById("garage-detail-photo") as HTMLImageElement | null;
+  detailImage?.addEventListener("error", () => {
+    media.innerHTML = '<div class="garage-detail-placeholder">GARAGE</div>';
+  });
+
+  element<HTMLDivElement>("garage-source").innerHTML = `
+    <div class="garage-source-grid">
+      <span><strong>SIRET</strong> ${safeText(garage.siret || "non publié")}</span>
+      ${garage.phone ? `<span><strong>Téléphone</strong> ${safeText(garage.phone)}</span>` : ""}
+      <span><strong>Statut</strong> ${isClaimed ? "Garage connecté à MecaConnect" : "Référencé publiquement - SIRET vérifié"}</span>
+    </div>
+    <p>${isClaimed
+      ? "Le garage a revendiqué et configuré sa fiche MecaConnect."
+      : "Les informations et prestations proviennent de sources publiques et du site officiel de l’établissement ou de son réseau. Cette fiche ne constitue pas un partenariat commercial."}</p>
+    <div class="garage-source-actions">
+      ${garage.website_url ? `<a class="btn secondary" href="${safeAttr(garage.website_url)}" target="_blank" rel="noopener noreferrer">Site officiel</a>` : ""}
+      ${garage.source_url ? `<a class="text-link" href="${safeAttr(garage.source_url)}" target="_blank" rel="noopener noreferrer">Voir la source</a>` : ""}
+    </div>
+  `;
+
+  const trust = element<HTMLDivElement>("garage-detail-trust");
+  trust.innerHTML = isClaimed && garage.booking_enabled
+    ? '<strong>Réservation MecaConnect activée</strong><span>Prestations configurées par le garage</span><span>Créneaux disponibles en ligne</span><span>Paiement selon les conditions du garage</span>'
+    : '<strong>Fiche publique vérifiée</strong><span>SIRET et établissement contrôlés</span><span>Prestations issues du site officiel</span><span>Tarifs à confirmer auprès du garage</span>';
+
   const list = element<HTMLDivElement>("service-list");
   list.innerHTML = "";
 
   for (const service of garage.services) {
+    const canBook = Boolean(garage.booking_enabled && service.bookable);
+    const priceMarkup = canBook && service.price > 0
+      ? `<strong>${formatPrice(service.price)}</strong>`
+      : `<strong class="price-on-request">${safeText(service.price_label || "Tarif à confirmer")}</strong>`;
+    const actionMarkup = canBook
+      ? `<button class="btn" data-service="${service.id}">Réserver</button>`
+      : (service.source_url
+          ? `<a class="btn secondary" href="${safeAttr(service.source_url)}" target="_blank" rel="noopener noreferrer">Voir la prestation</a>`
+          : "");
     const row = document.createElement("div");
     row.className = "service-row";
     row.innerHTML = `
@@ -484,8 +545,8 @@ async function loadGarageDetail(id: number): Promise<void> {
         <small>${safeText(service.description || "")}</small>
       </div>
       <div>
-        <strong>${formatPrice(service.price)}</strong>
-        <button class="btn" data-service="${service.id}">Réserver</button>
+        ${priceMarkup}
+        ${actionMarkup}
       </div>
     `;
     list.append(row);
