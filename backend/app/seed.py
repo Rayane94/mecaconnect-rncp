@@ -81,7 +81,7 @@ REAL_GARAGES = [
         "city": "Chelles",
         "department": "77",
         "postal_code": "77500",
-        "address": "107 avenue du Gendarme Castermant, 77500 Chelles",
+        "address": "105 avenue du Gendarme Castermant, 77500 Chelles",
         "phone": "01 64 26 65 67",
         "rating": 4.5,
         "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
@@ -424,6 +424,7 @@ def upsert_real_garage(db, data: dict) -> Garage:
     if lat is None or lng is None:
         lat, lng = geocode_address(data["address"])
 
+    claimed = bool(garage and garage.owner_id)
     values = {
         "name": data["name"],
         "slug": data["slug"],
@@ -446,10 +447,10 @@ def upsert_real_garage(db, data: dict) -> Garage:
         "source_verified_at": PUBLIC_SOURCE_VERIFIED_AT,
         "description": public_description(data),
         "verified": True,
-        "listing_status": "PUBLIC_REFERENCE",
-        "booking_enabled": False,
-        "payment_online_enabled": False,
-        "deposit_rate": 0.20,
+        "listing_status": "CLAIMED_PARTNER" if claimed else "PUBLIC_REFERENCE",
+        "booking_enabled": garage.booking_enabled if claimed else False,
+        "payment_online_enabled": garage.payment_online_enabled if claimed else False,
+        "deposit_rate": float(garage.deposit_rate or 0.20) if claimed else 0.20,
         "is_public": True,
         "lat": lat,
         "lng": lng,
