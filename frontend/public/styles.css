@@ -117,3 +117,7 @@ footer>div{display:grid;gap:.45rem}
 .garage-source-actions{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
 .price-on-request{max-width:220px;font-size:.82rem;color:var(--accent);text-align:right}
 @media(max-width:800px){.garage-detail-media{width:100%;max-width:520px}.garage-detail-head>div:last-child{width:100%}}
+
+.garage-detail-media figure{margin:0;display:grid;gap:.45rem}
+.garage-detail-media figcaption{font-size:.75rem;color:var(--muted);text-align:right}
+.garage-detail-media figcaption a{color:inherit}
