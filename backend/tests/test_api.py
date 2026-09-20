@@ -145,14 +145,14 @@ def test_analytics_event_requires_explicit_call(client):
 
 def test_public_catalog_contains_only_sourced_real_garages(client):
     garages = client.get("/api/garages").json()
-    assert len(garages) >= 13
+    assert len(garages) >= 16
     assert all(garage.get("is_public") is True for garage in garages)
     assert all(garage.get("siret") and len(garage["siret"]) == 14 for garage in garages)
     assert all(garage.get("source_url") for garage in garages)
     assert all(garage.get("listing_status") in {"PUBLIC_REFERENCE", "CLAIMED_PARTNER"} for garage in garages)
     assert all(garage.get("slug") != "atelier-demo-mecaconnect" for garage in garages)
     departments = {garage.get("department") for garage in garages}
-    assert {"75", "77", "78", "92", "93", "94", "95"}.issubset(departments)
+    assert {"75", "77", "78", "91", "92", "93", "94", "95"}.issubset(departments)
 
 
 def test_assistant_diagnosis_recommends_specialist(client):
