@@ -54,6 +54,7 @@ def ensure_schema_compatibility() -> None:
             "phone": "VARCHAR(40)",
             "website_url": "VARCHAR(500)",
             "photo_url": "VARCHAR(700)",
+            "photo_source_url": "VARCHAR(700)",
             "source_url": "VARCHAR(700)",
             "source_label": "VARCHAR(160)",
             "listing_status": "VARCHAR(32) DEFAULT 'PUBLIC_REFERENCE' NOT NULL",
