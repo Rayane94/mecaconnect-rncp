@@ -99,3 +99,21 @@ footer>div{display:grid;gap:.45rem}
   .privacy-actions{align-items:flex-start;flex-direction:column}
   .pro-register{padding:1.3rem}
 }
+
+
+/* Catalogue de garages réels et sourcés */
+.sourced-garage-card{overflow:hidden;padding:0!important}
+.garage-card-media{height:180px;background:linear-gradient(135deg,#e8edf0,#d9e3e7);overflow:hidden;display:grid;place-items:center}
+.garage-card-media img{width:100%;height:100%;object-fit:cover;display:block}
+.garage-photo-placeholder span,.garage-detail-placeholder{font-size:.78rem;font-weight:900;letter-spacing:.14em;color:#6b7d86}
+.garage-card-body{padding:1.25rem}
+.source-note{font-size:.8rem;color:var(--muted);padding-top:.45rem;border-top:1px dashed var(--line)}
+.muted-rating{color:var(--muted);font-size:.82rem}
+.garage-detail-media{width:320px;min-height:205px;border-radius:20px;overflow:hidden;background:linear-gradient(135deg,#e8edf0,#d9e3e7);display:grid;place-items:center;margin-bottom:1rem}
+.garage-detail-media img{width:100%;height:205px;object-fit:cover}
+.garage-source{margin-top:1rem;max-width:760px;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:14px;background:#fff}
+.garage-source-grid{display:flex;flex-wrap:wrap;gap:.5rem 1rem;font-size:.83rem}
+.garage-source p{margin:.65rem 0;color:var(--muted);font-size:.85rem}
+.garage-source-actions{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.price-on-request{max-width:220px;font-size:.82rem;color:var(--accent);text-align:right}
+@media(max-width:800px){.garage-detail-media{width:100%;max-width:520px}.garage-detail-head>div:last-child{width:100%}}
