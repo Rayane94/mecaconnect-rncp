@@ -21,6 +21,7 @@ export type Garage = {
   phone?: string | null;
   website_url?: string | null;
   photo_url?: string | null;
+  photo_source_url?: string | null;
   source_url?: string | null;
   source_label?: string | null;
   listing_status?: "PUBLIC_REFERENCE" | "CLAIMED_PARTNER" | "PENDING_VERIFICATION" | "DEMO_HIDDEN" | string;
