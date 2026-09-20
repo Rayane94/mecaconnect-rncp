@@ -1713,15 +1713,14 @@ def privacy_delete_account(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    has_completed_booking = any(
-        booking.status in {"CONFIRMED", "COMPLETED"}
-        for booking in user.bookings
-    )
+    has_any_booking = bool(user.bookings)
 
-    if has_completed_booking:
-        # On conserve les réservations nécessaires au suivi tout en anonymisant le compte.
+    if has_any_booking:
+        # Les réservations restent traçables mais le compte est anonymisé.
         user.full_name = "Compte supprimé"
+        user.email = f"deleted-{user.id}-{secrets.token_hex(6)}@invalid.local"
         user.phone_encrypted = None
+        user.password_hash = hash_password(secrets.token_urlsafe(32))
         user.is_active = False
     else:
         db.delete(user)
