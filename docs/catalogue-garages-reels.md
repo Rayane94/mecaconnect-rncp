@@ -24,6 +24,10 @@ Le catalogue public MecaConnect contient uniquement des établissements réels d
 | Midas Saint-Denis | 83845747100012 | 93 | Site officiel Midas |
 | Midas Vert-Saint-Denis | 47815359600042 | 77 | Site officiel Midas |
 | Midas Viry-Châtillon | 78894256300016 | 91 | Site officiel Midas |
+| Garage de Normandie | 34030305600022 | 92 | Site officiel Garage de Normandie |
+| Garage Auto Jesus | 52417469500014 | 92 | Annuaire professionnel + source photo dédiée |
+| Garage James Autos | 40995469000023 | 94 | Annuaire commerces de la Ville de Créteil |
+| Audi Bauer Paris Roissy | 77566940100082 | 95 | Site officiel Bauer Paris |
 
 ## Règles appliquées
 
@@ -34,4 +38,4 @@ Le catalogue public MecaConnect contient uniquement des établissements réels d
 - Les coordonnées cartographiques sont calculées à partir de l'adresse via la Géoplateforme IGN/BAN.
 - L'inscription professionnelle revérifie le SIRET et l'activité de l'établissement avant de rattacher une fiche à un compte GARAGE.
 
-Les URL sources détaillées sont stockées directement dans les champs `source_url`, `website_url` et `photo_url` du seed afin de conserver une provenance vérifiable au niveau de chaque fiche.
+Les URL sources détaillées sont stockées directement dans les champs `source_url`, `website_url`, `photo_url` et `photo_source_url` du seed afin de conserver une provenance vérifiable au niveau de chaque fiche.
