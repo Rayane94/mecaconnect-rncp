@@ -91,3 +91,15 @@ test('UX feedback fixes are implemented',()=>{
   assert.match(enhancements,/api\/privacy\/account/);
   assert.match(enhancements,/api\/auth\/register-garage/);
 });
+
+
+test('public garage catalog explains sourcing and real-establishment status',()=>{
+  assert.match(html,/13 établissements réels/);
+  assert.match(html,/SIRET vérifié/);
+  assert.match(html,/prestations sourcées|prestations issues de sources officielles/i);
+  assert.match(appSource,/PUBLIC_REFERENCE/);
+  assert.match(appSource,/SIRET vérifié/);
+  assert.match(appSource,/Aucun partenariat/);
+  assert.match(appSource,/price_label/);
+  assert.match(appSource,/photo_url/);
+});
