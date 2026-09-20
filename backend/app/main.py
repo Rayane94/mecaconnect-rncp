@@ -197,6 +197,15 @@ def garage_to_dict(garage: models.Garage) -> dict:
         "verification_source": garage.verification_source,
         "payment_online_enabled": garage.payment_online_enabled,
         "deposit_rate": garage.deposit_rate,
+        "phone": garage.phone,
+        "website_url": garage.website_url,
+        "photo_url": garage.photo_url,
+        "source_url": garage.source_url,
+        "source_label": garage.source_label,
+        "listing_status": garage.listing_status,
+        "booking_enabled": garage.booking_enabled,
+        "is_public": garage.is_public,
+        "source_verified_at": garage.source_verified_at,
     }
 
 
@@ -378,10 +387,17 @@ async def register_garage(
     email = payload.email.lower()
     if db.scalar(select(models.User).where(models.User.email == email)):
         raise HTTPException(status_code=409, detail="Adresse e-mail déjà utilisée")
-    if db.scalar(select(models.Garage).where(models.Garage.siret == payload.siret)):
-        raise HTTPException(status_code=409, detail="Ce SIRET est déjà rattaché à un garage")
 
     company = await lookup_company_by_siret(payload.siret)
+    existing_garage = db.scalar(
+        select(models.Garage).where(models.Garage.siret == payload.siret)
+    )
+    if existing_garage and existing_garage.owner_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Ce SIRET est déjà rattaché à un compte professionnel",
+        )
+
     user = models.User(
         email=email,
         password_hash=hash_password(payload.password),
@@ -392,28 +408,46 @@ async def register_garage(
     db.add(user)
     db.flush()
 
-    base_slug = _slugify(payload.garage_name)
-    slug = f"{base_slug}-{payload.siret[-5:]}"
-    garage = models.Garage(
-        owner_id=user.id,
-        name=payload.garage_name.strip(),
-        slug=slug,
-        city=company["city"] or "À compléter",
-        address=company["address"] or "Adresse à compléter",
-        postal_code=company["postal_code"] or None,
-        description=(
-            f"{payload.garage_name.strip()} - établissement professionnel "
-            "vérifié à partir de son SIRET. Complétez la fiche depuis l'espace garage."
-        ),
-        verified=True,
-        siret=company["siret"],
-        siren=company["siren"],
-        legal_name=company["legal_name"],
-        verification_source="Annuaire des Entreprises / API publique",
-        payment_online_enabled=True,
-        deposit_rate=0.20,
-    )
-    db.add(garage)
+    if existing_garage:
+        garage = existing_garage
+        garage.owner_id = user.id
+        garage.verified = True
+        garage.listing_status = "CLAIMED_PARTNER"
+        garage.booking_enabled = True
+        garage.is_public = True
+        garage.payment_online_enabled = True
+        garage.deposit_rate = float(garage.deposit_rate or 0.20)
+        garage.siren = company["siren"]
+        garage.legal_name = company["legal_name"]
+        garage.verification_source = "Annuaire des Entreprises / API publique"
+        if payload.garage_name.strip():
+            garage.name = payload.garage_name.strip()
+    else:
+        base_slug = _slugify(payload.garage_name)
+        slug = f"{base_slug}-{payload.siret[-5:]}"
+        garage = models.Garage(
+            owner_id=user.id,
+            name=payload.garage_name.strip(),
+            slug=slug,
+            city=company["city"] or "À compléter",
+            address=company["address"] or "Adresse à compléter",
+            postal_code=company["postal_code"] or None,
+            description=(
+                f"{payload.garage_name.strip()} - établissement professionnel "
+                "vérifié à partir de son SIRET. Complétez la fiche depuis l'espace garage."
+            ),
+            verified=True,
+            siret=company["siret"],
+            siren=company["siren"],
+            legal_name=company["legal_name"],
+            verification_source="Annuaire des Entreprises / API publique",
+            listing_status="CLAIMED_PARTNER",
+            booking_enabled=True,
+            is_public=True,
+            payment_online_enabled=True,
+            deposit_rate=0.20,
+        )
+        db.add(garage)
     db.commit()
     db.refresh(user)
     db.refresh(garage)
@@ -577,7 +611,7 @@ def list_garages(
     q: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = select(models.Garage)
+    query = select(models.Garage).where(models.Garage.is_public.is_(True))
 
     if city:
         query = query.where(func.lower(models.Garage.city) == city.lower())
@@ -611,7 +645,11 @@ async def assistant_diagnose(
     # Un ancien symptôme n'est repris que lorsqu'il s'agit clairement d'une réponse
     # de suivi courte. Cela évite qu'un nouveau sujet hérite d'un diagnostic précédent.
     context = prepare_conversation_message(payload.message, payload.history)
-    garages = db.scalars(select(models.Garage).order_by(models.Garage.rating.desc())).all()
+    garages = db.scalars(
+        select(models.Garage)
+        .where(models.Garage.is_public.is_(True))
+        .order_by(models.Garage.rating.desc())
+    ).all()
 
     diagnosis = build_diagnosis(
         message=context,
@@ -648,7 +686,7 @@ def assistant_status():
 @app.get("/api/garages/{garage_id}")
 def get_garage(garage_id: int, db: Session = Depends(get_db)):
     garage = db.get(models.Garage, garage_id)
-    if not garage:
+    if not garage or not garage.is_public:
         raise HTTPException(status_code=404, detail="Garage introuvable")
 
     result = garage_to_dict(garage)
@@ -659,6 +697,9 @@ def get_garage(garage_id: int, db: Session = Depends(get_db)):
             "description": service.description,
             "price": service.price,
             "duration_minutes": service.duration_minutes,
+            "price_label": service.price_label,
+            "bookable": service.bookable,
+            "source_url": service.source_url,
         }
         for service in garage.services
     ]
@@ -680,6 +721,9 @@ def create_garage(
     garage = models.Garage(
         owner_id=user.id,
         verified=user.role == "ADMIN",
+        listing_status="CLAIMED_PARTNER" if user.role == "ADMIN" else "PENDING_VERIFICATION",
+        booking_enabled=True,
+        is_public=user.role == "ADMIN",
         **payload.model_dump(),
     )
     db.add(garage)
@@ -857,6 +901,10 @@ def delete_availability(
 
 @app.get("/api/availability")
 def list_availability(garage_id: int, db: Session = Depends(get_db)):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or not garage.booking_enabled:
+        return []
+
     # Tolérance de cinq minutes pour éviter qu'un petit décalage d'horloge masque un créneau.
     now = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5)
 
@@ -891,6 +939,15 @@ def create_booking(
 
     if not slot or not service:
         raise HTTPException(status_code=404, detail="Créneau ou prestation introuvable")
+
+    if not service.bookable or not service.garage.booking_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Cette fiche est référencée publiquement mais ne prend pas encore "
+                "de réservation directement sur MecaConnect"
+            ),
+        )
 
     if service.garage_id != slot.garage_id:
         raise HTTPException(
@@ -1158,6 +1215,10 @@ def garage_dashboard(
                 "legal_name": garage.legal_name,
                 "payment_online_enabled": garage.payment_online_enabled,
                 "deposit_rate": garage.deposit_rate,
+                "listing_status": garage.listing_status,
+                "booking_enabled": garage.booking_enabled,
+                "source_url": garage.source_url,
+                "source_label": garage.source_label,
                 "services": len(service_items),
                 "service_items": service_items,
                 "slot_items": slot_items,
@@ -1733,7 +1794,11 @@ def admin_stats(
 ):
     return {
         "users": db.scalar(select(func.count()).select_from(models.User)),
-        "garages": db.scalar(select(func.count()).select_from(models.Garage)),
+        "garages": db.scalar(
+            select(func.count())
+            .select_from(models.Garage)
+            .where(models.Garage.is_public.is_(True))
+        ),
         "bookings": db.scalar(select(func.count()).select_from(models.Booking)),
         "payments_succeeded": db.scalar(
             select(func.count())
