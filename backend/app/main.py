@@ -272,10 +272,19 @@ async def lookup_company_by_siret(siret: str) -> dict:
             None,
         )
         if establishment:
+            activity_code = str(company.get("activite_principale") or "").replace(".", "")
             nature = " ".join(
                 str(company.get(key) or "")
                 for key in ("activite_principale", "section_activite_principale")
             ).lower()
+            if not activity_code.startswith("452"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Le SIRET existe, mais l'activité principale enregistrée ne correspond "
+                        "pas à l'entretien ou à la réparation automobile (NAF 45.20)."
+                    ),
+                )
             name = (
                 company.get("nom_complet")
                 or company.get("nom_raison_sociale")
@@ -1024,6 +1033,7 @@ def my_bookings(
             "deposit_amount": booking.deposit_amount,
             "service": booking.service.name,
             "garage": booking.service.garage.name,
+            "garage_id": booking.service.garage.id,
             "starts_at": booking.slot.starts_at,
             "payment_status": booking.payment.status if booking.payment else None,
         }
