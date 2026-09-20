@@ -201,7 +201,7 @@ def run() -> None:
                 garage = Garage(
                     owner_id=garage_user.id if data["slug"] == "garage-berthier" else None,
                     description=garage_description(data),
-                    verified=True,
+                    verified=False,
                     **data,
                 )
                 db.add(garage)
