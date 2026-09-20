@@ -319,8 +319,13 @@ async def address_search(q: str):
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
-                "https://api-adresse.data.gouv.fr/search/",
-                params={"q": query, "type": "municipality", "limit": 7},
+                "https://data.geopf.fr/geocodage/search",
+                params={
+                    "q": query,
+                    "type": "municipality",
+                    "autocomplete": "true",
+                    "limit": 7,
+                },
             )
             response.raise_for_status()
             features = response.json().get("features", [])
