@@ -62,3 +62,40 @@
 @media(max-width:1150px){.dashboard-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.user-dashboard-grid,.garage-overview-grid{grid-template-columns:1fr}.management-layout{grid-template-columns:1fr}.management-create-card{position:static}.booking-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-management-grid{grid-template-columns:1fr}}
 @media(max-width:800px){.dashboard-welcome{align-items:flex-start;flex-direction:column;padding:1.5rem}.garage-hero-status{justify-items:start}.dashboard-kpis{grid-template-columns:1fr 1fr}.management-list{grid-template-columns:1fr}.form-grid.two-cols{grid-template-columns:1fr}.booking-management-card{grid-template-columns:1fr}.booking-actions{flex-direction:row;flex-wrap:wrap;justify-content:flex-start}.booking-detail-grid{grid-template-columns:1fr 1fr}.workspace-tabs{margin-left:-.25rem;margin-right:-.25rem}.next-appointment-card{align-items:flex-start;flex-direction:column}}
 @media(max-width:560px){.dashboard-kpis,.booking-detail-grid,.activity-metrics{grid-template-columns:1fr}.dashboard-kpis article{min-height:104px}.booking-money{flex-direction:column;gap:.25rem}.workspace-tabs{border-radius:12px}.workspace-tabs button{padding:.65rem .75rem}.management-actions .btn,.booking-actions .btn{width:100%}}
+
+
+/* Corrections oral blanc : juridique, formulaires et espace pro */
+footer{align-items:flex-start}
+footer>div{display:grid;gap:.45rem}
+.footer-links{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.65rem 1rem}
+.footer-links a,.footer-links .link-button{font-size:.86rem;line-height:1.2}
+.form-error{display:block;margin-top:.35rem;color:#b42318;font-size:.78rem;font-weight:750}
+.company-check{min-height:1.4rem;padding:.7rem .85rem;border-radius:10px;background:#f5f7f8;color:var(--muted);font-size:.85rem}
+.company-check.success{background:#e9f6ee;color:#17673a}
+.company-check.error{background:#fff0ee;color:#9b2c22}
+.pro-register{max-width:1000px;margin:0 auto 4rem;padding:2rem;box-shadow:var(--shadow)}
+.pro-register h2{font-size:2rem;margin:.2rem 0 .7rem}
+.legal-company-card{display:grid;gap:.35rem;padding:1rem;border:1px solid var(--line);border-radius:14px;background:#f8fafb}
+.legal-company-card>span{font-size:.82rem;color:var(--muted)}
+.check-row{display:flex!important;align-items:center;gap:.55rem}
+.check-row input{width:auto!important}
+.privacy-actions{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding:1.5rem}
+.privacy-actions h3{margin:.2rem 0}
+.privacy-actions p{margin:.2rem 0;color:var(--muted)}
+.legal-page{max-width:1040px;margin:0 auto;padding-top:7rem;padding-bottom:6rem}
+.legal-page h1{font-size:clamp(2.3rem,5vw,4.8rem);line-height:1;letter-spacing:-.04em;margin:.3rem 0 1.5rem}
+.legal-page h2{margin-top:2.2rem;font-size:1.45rem}
+.legal-page p,.legal-page li{line-height:1.7;color:#43515a}
+.legal-intro{padding:1.2rem 1.4rem;border-left:4px solid var(--brand);background:#fff4ee;border-radius:0 14px 14px 0}
+.legal-update{margin-top:3rem;font-size:.85rem;color:var(--muted)!important}
+.legal-table{overflow-x:auto;border:1px solid var(--line);border-radius:14px}
+.legal-table table{width:100%;border-collapse:collapse;background:#fff}
+.legal-table th,.legal-table td{padding:.85rem 1rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:.88rem}
+.legal-table th{background:#f6f8f8;color:var(--accent)}
+#city-free{width:100%}
+@media(max-width:800px){
+  footer{align-items:flex-start;flex-direction:column}
+  .footer-links{justify-content:flex-start}
+  .privacy-actions{align-items:flex-start;flex-direction:column}
+  .pro-register{padding:1.3rem}
+}
