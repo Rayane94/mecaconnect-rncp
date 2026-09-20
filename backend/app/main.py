@@ -272,17 +272,19 @@ async def lookup_company_by_siret(siret: str) -> dict:
             None,
         )
         if establishment:
-            activity_code = str(company.get("activite_principale") or "").replace(".", "")
-            nature = " ".join(
-                str(company.get(key) or "")
-                for key in ("activite_principale", "section_activite_principale")
-            ).lower()
+            activity_value = (
+                establishment.get("activite_principale")
+                or company.get("activite_principale")
+                or ""
+            )
+            activity_code = str(activity_value).replace(".", "")
+            nature = str(activity_value).lower()
             if not activity_code.startswith("452"):
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        "Le SIRET existe, mais l'activité principale enregistrée ne correspond "
-                        "pas à l'entretien ou à la réparation automobile (NAF 45.20)."
+                        "Le SIRET existe, mais l'activité principale de cet établissement "
+                        "ne correspond pas à l'entretien ou à la réparation automobile (NAF 45.20)."
                     ),
                 )
             name = (
