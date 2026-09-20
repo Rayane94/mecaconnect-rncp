@@ -89,6 +89,7 @@ class Garage(Base):
     phone = Column(String(40), nullable=True)
     website_url = Column(String(500), nullable=True)
     photo_url = Column(String(700), nullable=True)
+    photo_source_url = Column(String(700), nullable=True)
     source_url = Column(String(700), nullable=True)
     source_label = Column(String(160), nullable=True)
     listing_status = Column(String(32), default="PUBLIC_REFERENCE", nullable=False)
