@@ -3,7 +3,7 @@ import os
 
 from sqlalchemy import select
 
-from .database import Base, SessionLocal, engine
+from .database import Base, SessionLocal, engine, ensure_schema_compatibility
 from .models import Availability, Garage, Service, User
 from .security import hash_password
 
@@ -177,6 +177,7 @@ def add_slots(db, garage: Garage) -> None:
 
 def run() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compatibility()
     db = SessionLocal()
 
     try:
