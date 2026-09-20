@@ -97,7 +97,7 @@ test('public garage catalog explains sourcing and real-establishment status',()=
   assert.match(html,/16 établissements réels/);
   assert.match(html,/SIRET vérifié/);
   assert.match(html,/prestations sourcées|prestations issues de sources officielles/i);
-  assert.match(appSource,/PUBLIC_REFERENCE/);
+  assert.match(appSource,/CLAIMED_PARTNER/);
   assert.match(appSource,/SIRET vérifié/);
   assert.match(appSource,/Aucun partenariat/);
   assert.match(appSource,/price_label/);
