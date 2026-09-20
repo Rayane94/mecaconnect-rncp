@@ -94,7 +94,7 @@ test('UX feedback fixes are implemented',()=>{
 
 
 test('public garage catalog explains sourcing and real-establishment status',()=>{
-  assert.match(html,/16 établissements réels/);
+  assert.match(html,/20 établissements réels/);
   assert.match(html,/SIRET vérifié/);
   assert.match(html,/prestations sourcées|prestations issues de sources officielles/i);
   assert.match(appSource,/CLAIMED_PARTNER/);
