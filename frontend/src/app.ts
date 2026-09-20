@@ -497,7 +497,7 @@ async function loadGarageDetail(id: number): Promise<void> {
   const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
   const media = element<HTMLDivElement>("garage-detail-media");
   media.innerHTML = garage.photo_url
-    ? `<img id="garage-detail-photo" src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}">`
+    ? `<figure><img id="garage-detail-photo" src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}">${garage.photo_source_url ? `<figcaption><a href="${safeAttr(garage.photo_source_url)}" target="_blank" rel="noopener noreferrer">Source de la photo</a></figcaption>` : ""}</figure>`
     : '<div class="garage-detail-placeholder">GARAGE</div>';
   const detailImage = document.getElementById("garage-detail-photo") as HTMLImageElement | null;
   detailImage?.addEventListener("error", () => {
