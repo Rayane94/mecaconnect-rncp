@@ -24,3 +24,5 @@ jobs:
           npm test
       - name: Python syntax check
         run: python -m compileall -q backend/app
+      - name: Production Docker image builds
+        run: docker build -f backend/Dockerfile -t mecaconnect-ci .
