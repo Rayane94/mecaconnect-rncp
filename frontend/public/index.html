@@ -18,6 +18,7 @@
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"MecaConnect","url":"__APP_BASE_URL__/","potentialAction":{"@type":"SearchAction","target":"__APP_BASE_URL__/?q={search_term_string}","query-input":"required name=search_term_string"}}</script>
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
   <script type="module" src="/assets/app.js" defer></script>
+  <script type="module" src="/assets/enhancements.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Aller au contenu</a>
@@ -32,7 +33,7 @@
   <main id="main">
     <section class="hero" data-page="home">
       <div><p class="eyebrow">L'ENTRETIEN AUTOMOBILE, PLUS SIMPLE</p><h1>Trouvez, comparez et réservez votre garage.</h1><p class="lead">Un seul parcours pour comprendre votre besoin, choisir un atelier selon ses spécialités et réserver un créneau disponible.</p>
-      <form id="search-form" class="search-card" aria-label="Rechercher un garage"><label>Que recherchez-vous ?<input id="q" placeholder="Vidange, freinage, diagnostic..." autocomplete="off"></label><label>Ville ou code postal<input id="city" list="city-suggestions" placeholder="Paris, 93100..." autocomplete="off"><datalist id="city-suggestions"></datalist></label><button class="btn" type="submit">Rechercher</button></form></div>
+      <form id="search-form" class="search-card" aria-label="Rechercher un garage"><label>Que recherchez-vous ?<input id="q" placeholder="Vidange, freinage, diagnostic..." autocomplete="off"></label><label>Ville ou code postal<select id="city"><option value="">Toutes les villes</option><option>Paris</option></select></label><button class="btn" type="submit">Rechercher</button></form></div>
       <div class="hero-visual" aria-hidden="true"><div class="car-card"><span class="car-icon">AUTO</span><strong>Votre rendez-vous</strong><span>Prix affiché</span><span>Créneau confirmé</span><span>Suivi dans votre espace</span></div></div>
     </section>
     <section class="home-proof section" data-page="home" aria-label="Points forts de MecaConnect">
