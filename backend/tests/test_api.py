@@ -376,3 +376,95 @@ def test_garage_can_complete_paid_booking(client):
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "COMPLETED"
+
+
+def test_legal_pages_are_available(client):
+    for path in ("/mentions-legales", "/confidentialite", "/cgu", "/cgv"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "MecaConnect" in response.text
+
+
+def test_vehicle_plate_format_is_enforced(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "plate@example.com",
+            "password": "PlateStrong-2026!",
+            "full_name": "Plate User",
+        },
+    )
+    invalid = client.post(
+        "/api/vehicles",
+        json={"make": "Renault", "model": "Clio", "year": 2022, "plate": "abc123"},
+    )
+    assert invalid.status_code == 422
+    valid = client.post(
+        "/api/vehicles",
+        json={
+            "make": "Renault",
+            "model": "Clio",
+            "year": 2022,
+            "plate": "AA-123-AA",
+            "motorization": "Essence",
+        },
+    )
+    assert valid.status_code == 201
+
+
+def test_user_can_cancel_booking_and_slot_becomes_available(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "cancel-booking@example.com",
+            "password": "CancelBooking-2026!",
+            "full_name": "Cancel Booking",
+        },
+    )
+    garage = client.get("/api/garages").json()[0]
+    detail = client.get(f"/api/garages/{garage['id']}").json()
+    slot = client.get(f"/api/availability?garage_id={garage['id']}").json()[0]
+    booking = client.post(
+        "/api/bookings",
+        json={"service_id": detail["services"][0]["id"], "slot_id": slot["id"]},
+    )
+    assert booking.status_code == 201
+    cancelled = client.patch(f"/api/bookings/{booking.json()['id']}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "CANCELLED"
+    available_ids = {
+        item["id"]
+        for item in client.get(f"/api/availability?garage_id={garage['id']}").json()
+    }
+    assert slot["id"] in available_ids
+
+
+def test_professional_registration_uses_verified_siret(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_lookup(siret):
+        return {
+            "siret": siret,
+            "siren": siret[:9],
+            "legal_name": "Garage Test SAS",
+            "address": "1 rue du Test",
+            "city": "Paris",
+            "postal_code": "75001",
+            "activity": "4520A",
+        }
+
+    monkeypatch.setattr(main_module, "lookup_company_by_siret", fake_lookup)
+    response = client.post(
+        "/api/auth/register-garage",
+        json={
+            "email": "pro-siret@example.com",
+            "password": "GarageVerified-2026!",
+            "full_name": "Responsable Garage",
+            "phone": "0601020304",
+            "siret": "12345678900011",
+            "garage_name": "Garage Test",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["role"] == "GARAGE"
+    assert response.json()["verified"] is True
