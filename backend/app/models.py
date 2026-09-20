@@ -56,6 +56,7 @@ class Vehicle(Base):
     model = Column(String(80), nullable=False)
     year = Column(Integer, nullable=False)
     plate = Column(String(24), nullable=True)
+    motorization = Column(String(80), nullable=True)
 
     owner = relationship("User", back_populates="vehicles")
 
@@ -79,6 +80,12 @@ class Garage(Base):
     specialties = Column(Text, default="multimarque,entretien", nullable=False)
     brands = Column(Text, default="multimarque", nullable=False)
     hourly_rate = Column(Float, nullable=True)
+    siret = Column(String(14), unique=True, index=True, nullable=True)
+    siren = Column(String(9), index=True, nullable=True)
+    legal_name = Column(String(180), nullable=True)
+    verification_source = Column(String(80), nullable=True)
+    payment_online_enabled = Column(Boolean, default=True, nullable=False)
+    deposit_rate = Column(Float, default=0.20, nullable=False)
 
     services = relationship(
         "Service",
