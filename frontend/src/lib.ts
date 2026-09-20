@@ -18,6 +18,15 @@ export type Garage = {
   legal_name?: string | null;
   payment_online_enabled?: boolean;
   deposit_rate?: number;
+  phone?: string | null;
+  website_url?: string | null;
+  photo_url?: string | null;
+  source_url?: string | null;
+  source_label?: string | null;
+  listing_status?: "PUBLIC_REFERENCE" | "CLAIMED_PARTNER" | "PENDING_VERIFICATION" | "DEMO_HIDDEN" | string;
+  booking_enabled?: boolean;
+  is_public?: boolean;
+  source_verified_at?: string | null;
 };
 
 export type Slot = {
