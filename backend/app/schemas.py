@@ -20,7 +20,31 @@ class RegisterIn(BaseModel):
         ]
         if sum(groups) < 3:
             raise ValueError(
-                "Le mot de passe doit combiner au moins trois catégories de caractères"
+                "Utilisez au moins 3 types de caractères parmi : majuscules, minuscules, chiffres et symboles"
+            )
+        return value
+
+
+class RegisterGarageIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+    full_name: str = Field(min_length=2, max_length=120)
+    phone: str | None = Field(default=None, max_length=30)
+    siret: str = Field(pattern=r"^\d{14}$")
+    garage_name: str = Field(min_length=2, max_length=150)
+
+    @field_validator("password")
+    @classmethod
+    def strong_password(cls, value: str) -> str:
+        groups = [
+            any(char.islower() for char in value),
+            any(char.isupper() for char in value),
+            any(char.isdigit() for char in value),
+            any(not char.isalnum() for char in value),
+        ]
+        if sum(groups) < 3:
+            raise ValueError(
+                "Utilisez au moins 3 types de caractères parmi : majuscules, minuscules, chiffres et symboles"
             )
         return value
 
@@ -35,7 +59,13 @@ class VehicleIn(BaseModel):
     make: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=80)
     year: int = Field(ge=1950, le=2100)
-    plate: str | None = Field(default=None, max_length=24)
+    plate: str | None = Field(default=None, pattern=r"^[A-Z]{2}-\d{3}-[A-Z]{2}$")
+    motorization: str | None = Field(default=None, max_length=80)
+
+    @field_validator("plate")
+    @classmethod
+    def normalize_plate(cls, value: str | None) -> str | None:
+        return value.upper() if value else value
 
 
 class GarageIn(BaseModel):
@@ -56,6 +86,8 @@ class GarageUpdateIn(BaseModel):
     specialties: str | None = Field(default=None, max_length=1000)
     brands: str | None = Field(default=None, max_length=1000)
     hourly_rate: float | None = Field(default=None, gt=0, le=1000)
+    payment_online_enabled: bool | None = None
+    deposit_rate: float | None = Field(default=None, ge=0.10, le=1.0)
 
 
 class ServiceIn(BaseModel):
@@ -87,6 +119,10 @@ class BookingIn(BaseModel):
 
 class BookingStatusIn(BaseModel):
     status: str = Field(pattern=r"^(CONFIRMED|COMPLETED|CANCELLED)$")
+
+
+class BookingRescheduleIn(BaseModel):
+    slot_id: int
 
 
 class ReviewIn(BaseModel):
