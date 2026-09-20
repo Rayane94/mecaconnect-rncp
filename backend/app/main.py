@@ -2,6 +2,10 @@ import logging
 import os
 import secrets
 import time
+import re
+import unicodedata
+
+import httpx
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,7 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select, text
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -33,6 +37,35 @@ logger = logging.getLogger("mecaconnect")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 Base.metadata.create_all(bind=engine)
+
+def ensure_schema_compatibility() -> None:
+    """Ajoute les colonnes récentes sans casser une base Railway déjà existante."""
+    inspector = inspect(engine)
+    migrations = {
+        "vehicles": {
+            "motorization": "VARCHAR(80)",
+        },
+        "garages": {
+            "siret": "VARCHAR(14)",
+            "siren": "VARCHAR(9)",
+            "legal_name": "VARCHAR(180)",
+            "verification_source": "VARCHAR(80)",
+            "payment_online_enabled": "BOOLEAN DEFAULT TRUE NOT NULL",
+            "deposit_rate": "FLOAT DEFAULT 0.20 NOT NULL",
+        },
+    }
+    with engine.begin() as connection:
+        for table_name, columns in migrations.items():
+            if table_name not in inspector.get_table_names():
+                continue
+            existing = {item["name"] for item in inspector.get_columns(table_name)}
+            for column_name, ddl in columns.items():
+                if column_name not in existing:
+                    connection.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
+                    )
+
+ensure_schema_compatibility()
 
 app = FastAPI(
     title="MecaConnect API",
@@ -185,6 +218,12 @@ def garage_to_dict(garage: models.Garage) -> dict:
         "specialties": [item.strip() for item in (garage.specialties or "").split(",") if item.strip()],
         "brands": [item.strip() for item in (garage.brands or "").split(",") if item.strip()],
         "hourly_rate": garage.hourly_rate,
+        "siret": garage.siret,
+        "siren": garage.siren,
+        "legal_name": garage.legal_name,
+        "verification_source": garage.verification_source,
+        "payment_online_enabled": garage.payment_online_enabled,
+        "deposit_rate": garage.deposit_rate,
     }
 
 
@@ -195,6 +234,107 @@ def health() -> dict:
         "service": "mecaconnect-api",
         "time": datetime.now(timezone.utc).isoformat(),
     }
+
+
+
+
+def _slugify(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_value = "".join(char for char in normalized if not unicodedata.combining(char))
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_value.lower()).strip("-")
+    return slug[:120] or "garage"
+
+
+async def lookup_company_by_siret(siret: str) -> dict:
+    """Vérifie un SIRET avec l'API publique de recherche d'entreprises."""
+    if not re.fullmatch(r"\d{14}", siret):
+        raise HTTPException(status_code=422, detail="Le SIRET doit contenir 14 chiffres")
+
+    url = "https://recherche-entreprises.api.gouv.fr/search"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(url, params={"q": siret, "per_page": 5})
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:
+        logger.warning("Vérification SIRET indisponible: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="La vérification officielle du SIRET est momentanément indisponible",
+        ) from exc
+
+    for company in payload.get("results", []):
+        establishments = [company.get("siege") or {}] + list(
+            company.get("matching_etablissements") or []
+        )
+        establishment = next(
+            (item for item in establishments if str(item.get("siret") or "") == siret),
+            None,
+        )
+        if establishment:
+            nature = " ".join(
+                str(company.get(key) or "")
+                for key in ("activite_principale", "section_activite_principale")
+            ).lower()
+            name = (
+                company.get("nom_complet")
+                or company.get("nom_raison_sociale")
+                or company.get("sigle")
+                or "Entreprise"
+            )
+            address = establishment.get("adresse") or ""
+            city = establishment.get("libelle_commune") or establishment.get("commune") or ""
+            postal_code = establishment.get("code_postal") or ""
+            return {
+                "siret": siret,
+                "siren": str(company.get("siren") or siret[:9]),
+                "legal_name": str(name),
+                "address": str(address),
+                "city": str(city),
+                "postal_code": str(postal_code),
+                "activity": nature,
+            }
+
+    raise HTTPException(
+        status_code=404,
+        detail="SIRET introuvable dans le registre public des entreprises",
+    )
+
+
+@app.get("/api/public/address-search")
+async def address_search(q: str):
+    query = q.strip()
+    if len(query) < 2:
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                "https://api-adresse.data.gouv.fr/search/",
+                params={"q": query, "type": "municipality", "limit": 7},
+            )
+            response.raise_for_status()
+            features = response.json().get("features", [])
+    except Exception:
+        return []
+
+    results = []
+    seen = set()
+    for feature in features:
+        props = feature.get("properties") or {}
+        city = props.get("city") or props.get("name")
+        postcode = props.get("postcode") or ""
+        label = props.get("label") or city
+        if not city or city in seen:
+            continue
+        seen.add(city)
+        results.append({"city": city, "postcode": postcode, "label": label})
+    return results
+
+
+@app.get("/api/public/company/{siret}")
+async def company_lookup(siret: str):
+    return await lookup_company_by_siret(siret)
 
 
 @app.post("/api/auth/register", status_code=201)
@@ -235,6 +375,78 @@ def register(
         "email": user.email,
         "full_name": user.full_name,
         "role": user.role,
+    }
+
+
+
+
+@app.post("/api/auth/register-garage", status_code=201)
+async def register_garage(
+    payload: schemas.RegisterGarageIn,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    email = payload.email.lower()
+    if db.scalar(select(models.User).where(models.User.email == email)):
+        raise HTTPException(status_code=409, detail="Adresse e-mail déjà utilisée")
+    if db.scalar(select(models.Garage).where(models.Garage.siret == payload.siret)):
+        raise HTTPException(status_code=409, detail="Ce SIRET est déjà rattaché à un garage")
+
+    company = await lookup_company_by_siret(payload.siret)
+    user = models.User(
+        email=email,
+        password_hash=hash_password(payload.password),
+        full_name=payload.full_name.strip(),
+        role="GARAGE",
+        phone_encrypted=encrypt_text(payload.phone),
+    )
+    db.add(user)
+    db.flush()
+
+    base_slug = _slugify(payload.garage_name)
+    slug = f"{base_slug}-{payload.siret[-5:]}"
+    garage = models.Garage(
+        owner_id=user.id,
+        name=payload.garage_name.strip(),
+        slug=slug,
+        city=company["city"] or "À compléter",
+        address=company["address"] or "Adresse à compléter",
+        postal_code=company["postal_code"] or None,
+        description=(
+            f"{payload.garage_name.strip()} - établissement professionnel "
+            "vérifié à partir de son SIRET. Complétez la fiche depuis l'espace garage."
+        ),
+        verified=True,
+        siret=company["siret"],
+        siren=company["siren"],
+        legal_name=company["legal_name"],
+        verification_source="Annuaire des Entreprises / API publique",
+        payment_online_enabled=True,
+        deposit_rate=0.20,
+    )
+    db.add(garage)
+    db.commit()
+    db.refresh(user)
+    db.refresh(garage)
+
+    token = create_access_token(user.id, user.role)
+    response.set_cookie(
+        "mc_session",
+        token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=3600,
+    )
+    add_audit_log(db, user.id, "REGISTER_GARAGE", "garage", str(garage.id))
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+        "garage_id": garage.id,
+        "siret": garage.siret,
+        "verified": garage.verified,
     }
 
 
@@ -362,6 +574,7 @@ def list_vehicles(
             "model": vehicle.model,
             "year": vehicle.year,
             "plate": vehicle.plate,
+            "motorization": vehicle.motorization,
         }
         for vehicle in vehicles
     ]
@@ -705,7 +918,10 @@ def create_booking(
             raise HTTPException(status_code=403, detail="Véhicule invalide")
 
     slot.is_booked = True
-    deposit = round(service.price * 0.20, 2)
+    garage = service.garage
+    payment_online_enabled = bool(garage.payment_online_enabled)
+    deposit_rate = float(garage.deposit_rate or 0.20)
+    deposit = round(service.price * deposit_rate, 2) if payment_online_enabled else 0.0
 
     booking = models.Booking(
         user_id=user.id,
@@ -714,6 +930,7 @@ def create_booking(
         slot_id=slot.id,
         total_amount=service.price,
         deposit_amount=deposit,
+        status="PENDING_PAYMENT" if payment_online_enabled else "CONFIRMED",
     )
     db.add(booking)
     db.commit()
@@ -725,7 +942,67 @@ def create_booking(
         "status": booking.status,
         "total_amount": booking.total_amount,
         "deposit_amount": booking.deposit_amount,
+        "payment_required": payment_online_enabled,
+        "deposit_rate": deposit_rate if payment_online_enabled else 0,
     }
+
+
+
+
+@app.patch("/api/bookings/{booking_id}/cancel")
+def cancel_own_booking(
+    booking_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    booking = db.get(models.Booking, booking_id)
+    if not booking or (booking.user_id != user.id and user.role != "ADMIN"):
+        raise HTTPException(status_code=404, detail="Réservation introuvable")
+    if booking.status in {"COMPLETED", "CANCELLED"}:
+        raise HTTPException(status_code=409, detail="Cette réservation ne peut plus être annulée")
+    booking.status = "CANCELLED"
+    booking.slot.is_booked = False
+    db.commit()
+    add_audit_log(db, user.id, "CANCEL", "booking", str(booking.id))
+    return {
+        "id": booking.id,
+        "status": booking.status,
+        "refund_note": (
+            "Si un acompte a déjà été payé, son éventuel remboursement doit être traité "
+            "selon les conditions du garage et le moyen de paiement."
+        ),
+    }
+
+
+@app.patch("/api/bookings/{booking_id}/reschedule")
+def reschedule_own_booking(
+    booking_id: int,
+    payload: schemas.BookingRescheduleIn,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    booking = db.get(models.Booking, booking_id)
+    if not booking or (booking.user_id != user.id and user.role != "ADMIN"):
+        raise HTTPException(status_code=404, detail="Réservation introuvable")
+    if booking.status not in {"PENDING_PAYMENT", "CONFIRMED"}:
+        raise HTTPException(status_code=409, detail="Cette réservation ne peut plus être modifiée")
+
+    new_slot = db.get(models.Availability, payload.slot_id)
+    if not new_slot:
+        raise HTTPException(status_code=404, detail="Nouveau créneau introuvable")
+    if new_slot.garage_id != booking.service.garage_id:
+        raise HTTPException(status_code=400, detail="Le créneau appartient à un autre garage")
+    if new_slot.is_booked and new_slot.id != booking.slot_id:
+        raise HTTPException(status_code=409, detail="Ce créneau n'est plus disponible")
+
+    old_slot = booking.slot
+    if new_slot.id != old_slot.id:
+        old_slot.is_booked = False
+        new_slot.is_booked = True
+        booking.slot_id = new_slot.id
+    db.commit()
+    add_audit_log(db, user.id, "RESCHEDULE", "booking", str(booking.id))
+    return {"id": booking.id, "status": booking.status, "starts_at": new_slot.starts_at}
 
 
 @app.get("/api/bookings/me")
@@ -886,6 +1163,11 @@ def garage_dashboard(
                 "specialties": garage.specialties,
                 "brands": garage.brands,
                 "hourly_rate": garage.hourly_rate,
+                "siret": garage.siret,
+                "siren": garage.siren,
+                "legal_name": garage.legal_name,
+                "payment_online_enabled": garage.payment_online_enabled,
+                "deposit_rate": garage.deposit_rate,
                 "services": len(service_items),
                 "service_items": service_items,
                 "slot_items": slot_items,
@@ -932,6 +1214,9 @@ async def create_payment_session(
     booking = db.get(models.Booking, booking_id)
     if not booking or (booking.user_id != user.id and user.role != "ADMIN"):
         raise HTTPException(status_code=404, detail="Réservation introuvable")
+
+    if not booking.service.garage.payment_online_enabled:
+        return {"mode": "pay-at-garage", "amount": 0, "status": "NOT_REQUIRED"}
 
     if booking.payment and booking.payment.status == "SUCCEEDED":
         return {"status": "SUCCEEDED"}
@@ -1505,6 +1790,26 @@ def frontend_root():
 @app.get("/professionnels", response_class=HTMLResponse, include_in_schema=False)
 def frontend_page(garage_id: int | None = None):
     return render_frontend()
+
+
+@app.get("/mentions-legales", response_class=HTMLResponse, include_in_schema=False)
+def legal_notice():
+    return HTMLResponse((FRONT_DIR / "legal.html").read_text(encoding="utf-8"))
+
+
+@app.get("/confidentialite", response_class=HTMLResponse, include_in_schema=False)
+def privacy_page():
+    return HTMLResponse((FRONT_DIR / "privacy.html").read_text(encoding="utf-8"))
+
+
+@app.get("/cgu", response_class=HTMLResponse, include_in_schema=False)
+def terms_page():
+    return HTMLResponse((FRONT_DIR / "terms.html").read_text(encoding="utf-8"))
+
+
+@app.get("/cgv", response_class=HTMLResponse, include_in_schema=False)
+def sales_terms_page():
+    return HTMLResponse((FRONT_DIR / "sales-terms.html").read_text(encoding="utf-8"))
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
