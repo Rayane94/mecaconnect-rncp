@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>MecaConnect - Réservez votre garage en ligne</title>
-  <meta name="description" content="Trouvez un garage, comparez les prestations automobiles, choisissez un créneau et réservez votre intervention avec un acompte sécurisé.">
+  <title>MecaConnect - Trouvez un garage réel et préparez votre rendez-vous</title>
+  <meta name="description" content="Trouvez des garages réels avec SIRET vérifié, consultez leurs prestations sourcées et réservez en ligne lorsque l'établissement active MecaConnect.">
   <meta name="keywords" content="garage, entretien automobile, réservation garage, vidange, freinage, diagnostic auto">
   <meta name="robots" content="index,follow">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="MecaConnect - Réservez votre garage en ligne">
-  <meta property="og:description" content="Recherche de garages, disponibilités, réservation et acompte en ligne.">
+  <meta property="og:title" content="MecaConnect - Garages réels et prestations vérifiées">
+  <meta property="og:description" content="Garages réels, SIRET vérifiés, prestations sourcées et réservation lorsqu'elle est activée par l'établissement.">
   <meta property="og:url" content="__APP_BASE_URL__/">
   <meta name="twitter:card" content="summary">
   <link rel="canonical" href="__APP_BASE_URL__/">
@@ -32,13 +32,13 @@
   </header>
   <main id="main">
     <section class="hero" data-page="home">
-      <div><p class="eyebrow">L'ENTRETIEN AUTOMOBILE, PLUS SIMPLE</p><h1>Trouvez, comparez et réservez votre garage.</h1><p class="lead">Un seul parcours pour comprendre votre besoin, choisir un atelier selon ses spécialités et réserver un créneau disponible.</p>
+      <div><p class="eyebrow">L'ENTRETIEN AUTOMOBILE, PLUS SIMPLE</p><h1>Trouvez de vrais garages, comparez et préparez votre rendez-vous.</h1><p class="lead">MecaConnect référence des établissements réels avec SIRET vérifié, affiche leurs prestations sourcées et permet la réservation en ligne lorsque le garage active son espace.</p>
       <form id="search-form" class="search-card" aria-label="Rechercher un garage"><label>Que recherchez-vous ?<input id="q" placeholder="Vidange, freinage, diagnostic..." autocomplete="off"></label><label>Ville ou code postal<select id="city"><option value="">Toutes les villes</option><option>Paris</option></select></label><button class="btn" type="submit">Rechercher</button></form></div>
       <div class="hero-visual" aria-hidden="true"><div class="car-card"><span class="car-icon">AUTO</span><strong>Votre rendez-vous</strong><span>Prix affiché</span><span>Créneau confirmé</span><span>Suivi dans votre espace</span></div></div>
     </section>
     <section class="home-proof section" data-page="home" aria-label="Points forts de MecaConnect">
-      <article><strong>31</strong><span>ateliers référencés en Île-de-France</span></article>
-      <article><strong>8</strong><span>départements couverts</span></article>
+      <article><strong>13</strong><span>établissements réels référencés</span></article>
+      <article><strong>100 %</strong><span>des fiches publiques avec SIRET vérifié</span></article>
       <article><strong>Au choix</strong><span>acompte en ligne ou paiement au garage</span></article>
       <article><strong>24 h/24</strong><span>pour consulter et réserver</span></article>
     </section>
@@ -47,7 +47,7 @@
       <div class="feature-grid">
         <article><span class="feature-icon">01</span><h3>Recherche ciblée</h3><p>Filtrez les ateliers par ville, prestation et spécialité sans multiplier les appels.</p></article>
         <article><span class="feature-icon">02</span><h3>Aide MecaBot</h3><p>Décrivez un bruit, un voyant ou un comportement anormal pour identifier le niveau d'urgence et le type d'atelier à consulter.</p><a href="/mecabot" data-link>Essayer MecaBot</a></article>
-        <article><span class="feature-icon">03</span><h3>Tarifs et créneaux</h3><p>Consultez le prix de la prestation, sa durée et les disponibilités avant de confirmer.</p></article>
+        <article><span class="feature-icon">03</span><h3>Prestations sourcées</h3><p>Consultez les prestations publiées par le garage ou son réseau officiel. Aucun tarif n'est inventé : s'il n'est pas publié, MecaConnect indique qu'il est à confirmer.</p></article>
         <article><span class="feature-icon">04</span><h3>Suivi centralisé</h3><p>Retrouvez vos véhicules, vos rendez-vous et le statut de vos réservations dans votre espace personnel.</p></article>
       </div>
     </section>
@@ -85,17 +85,17 @@
         </div>
       </div>
     </section>
-    <section id="garages" class="section page-shell" data-page="garages" hidden><div class="section-head"><div><p class="eyebrow">TROUVER UN ATELIER</p><h2>Comparez les spécialités et les disponibilités</h2><p class="lead">Chaque fiche regroupe l'adresse, les domaines d'intervention, les prestations proposées et les créneaux ouverts à la réservation.</p></div><span class="trust">✓ 31 ateliers · 8 départements</span></div><div class="garage-map-layout"><div><div id="garage-grid" class="garage-grid" aria-live="polite"></div></div><aside class="map-panel"><div id="garage-map" role="img" aria-label="Carte des garages MecaConnect en Île-de-France"></div><p id="map-status" class="microcopy">Chargement de la carte des ateliers…</p></aside></div></section>
-    <section id="garage-detail" class="section detail page-shell" data-page="garage-detail" hidden><a class="back-link" href="/garages" data-link>← Retour aux garages</a><div class="garage-detail-head"><div><p class="eyebrow">ATELIER ET PRESTATIONS</p><h2 id="garage-name"></h2><p id="garage-address" class="lead"></p></div><div class="detail-trust"><strong>Réservation en ligne</strong><span>Tarif connu avant confirmation</span><span>Créneaux mis à jour</span><span>Acompte sécurisé</span></div></div><div class="detail-section-title"><p class="eyebrow">PRESTATIONS DISPONIBLES</p><h3>Choisissez l'intervention adaptée</h3></div><div id="service-list"></div><aside class="booking-help"><strong>Vous ne savez pas quelle prestation choisir ?</strong><p>Décrivez les symptômes à MecaBot : il vous indiquera les familles de panne possibles, le niveau d'urgence et les spécialités à rechercher.</p><a class="btn secondary" href="/mecabot" data-link>Demander à MecaBot</a></aside></section>
+    <section id="garages" class="section page-shell" data-page="garages" hidden><div class="section-head"><div><p class="eyebrow">TROUVER UN ATELIER</p><h2>Comparez des établissements réels</h2><p class="lead">Chaque fiche publique indique l'adresse, le SIRET, les spécialités et les prestations issues de sources officielles. La réservation MecaConnect n'apparaît que si le garage a revendiqué sa fiche et configuré son offre.</p></div><span class="trust">✓ 13 établissements réels · données sourcées</span></div><div class="garage-map-layout"><div><div id="garage-grid" class="garage-grid" aria-live="polite"></div></div><aside class="map-panel"><div id="garage-map" role="img" aria-label="Carte des garages MecaConnect en Île-de-France"></div><p id="map-status" class="microcopy">Chargement de la carte des ateliers…</p></aside></div></section>
+    <section id="garage-detail" class="section detail page-shell" data-page="garage-detail" hidden><a class="back-link" href="/garages" data-link>← Retour aux garages</a><div class="garage-detail-head"><div><p class="eyebrow">ATELIER ET PRESTATIONS</p><h2 id="garage-name"></h2><p id="garage-address" class="lead"></p><div id="garage-source" class="garage-source"></div></div><div><div id="garage-detail-media" class="garage-detail-media"></div><div id="garage-detail-trust" class="detail-trust"></div></div></div><div class="detail-section-title"><p class="eyebrow">PRESTATIONS DISPONIBLES</p><h3>Choisissez l'intervention adaptée</h3></div><div id="service-list"></div><aside class="booking-help"><strong>Vous ne savez pas quelle prestation choisir ?</strong><p>Décrivez les symptômes à MecaBot : il vous indiquera les familles de panne possibles, le niveau d'urgence et les spécialités à rechercher.</p><a class="btn secondary" href="/mecabot" data-link>Demander à MecaBot</a></aside></section>
     <section id="dashboard" class="section dashboard page-shell" data-page="dashboard" hidden aria-labelledby="dashboard-title"><div class="section-head"><div><p id="dashboard-eyebrow" class="eyebrow">ESPACE PERSONNEL</p><h2 id="dashboard-title">Mon espace</h2></div><span id="dashboard-role" class="trust"></span></div><div id="dashboard-content"></div></section>
     <section id="auth-page" class="section auth-page page-shell" data-page="auth" hidden><div class="section-head"><div><p class="eyebrow">VOTRE COMPTE</p><h1>Connexion ou création de compte</h1><p class="lead">Accédez à vos véhicules, réservations et outils professionnels depuis un espace dédié.</p></div></div><div class="auth-grid panel"><form id="login-form"><h2>Connexion</h2><label>E-mail<input id="login-email" type="email" required autocomplete="email"></label><label>Mot de passe<input id="login-password" type="password" required autocomplete="current-password"></label><label>Code 2FA si activé<input id="login-totp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><button class="btn" type="submit">Se connecter</button></form><form id="register-form"><h2>Créer un compte</h2><label>Nom complet<input id="reg-name" required autocomplete="name"></label><label>E-mail<input id="reg-email" type="email" required autocomplete="email"></label><label>Mot de passe<input id="reg-password" type="password" required minlength="12" autocomplete="new-password" aria-describedby="reg-password-help reg-password-error"><small id="reg-password-help">12 caractères minimum et au moins 3 types parmi : majuscules, minuscules, chiffres et symboles.</small><span id="reg-password-error" class="form-error" role="alert" hidden></span></label><button class="btn secondary" type="submit">Créer mon compte</button></form></div></section>
     <section id="how" class="section how-page page-shell" data-page="how" hidden>
       <div class="page-hero"><p class="eyebrow">COMMENT ÇA MARCHE</p><h1>De votre besoin au rendez-vous confirmé</h1><p class="lead">Le parcours limite les ressaisies et vous laisse vérifier chaque information avant le paiement de l'acompte.</p><div class="hero-actions"><a class="btn" href="/garages" data-link>Trouver un garage</a><a class="btn secondary" href="/mecabot" data-link>Analyser un symptôme</a></div></div>
       <div class="journey">
         <article><span>01</span><div><h3>Identifiez votre besoin</h3><p>Recherchez directement une vidange, un contrôle de freinage, des pneumatiques ou un diagnostic. En cas de doute, MecaBot vous aide à déterminer la spécialité pertinente et le niveau d'urgence.</p><small>Vous gardez toujours la décision finale : MecaBot ne remplace pas l'examen du véhicule.</small></div></article>
-        <article><span>02</span><div><h3>Comparez les ateliers</h3><p>Consultez la localisation, la note, les spécialités, les marques prises en charge et les prestations proposées. La carte permet de visualiser les ateliers autour de votre zone.</p></div></article>
+        <article><span>02</span><div><h3>Comparez les ateliers</h3><p>Consultez la localisation, le SIRET, les spécialités et les prestations publiées par des garages réels. La carte permet de visualiser les établissements géocodés.</p></div></article>
         <article><span>03</span><div><h3>Ajoutez votre véhicule</h3><p>Enregistrez la marque, le modèle, l'année et l'immatriculation dans votre espace. Ces informations évitent de les ressaisir lors des prochaines réservations.</p></div></article>
-        <article><span>04</span><div><h3>Choisissez une prestation et un créneau</h3><p>Le prix, la durée et les créneaux encore disponibles sont affichés avant validation. Un contrôle côté serveur empêche qu'un même créneau soit réservé deux fois.</p></div></article>
+        <article><span>04</span><div><h3>Consultez ou réservez</h3><p>Sur une fiche publique, les prestations sont informatives et renvoient vers la source officielle. Lorsqu'un garage revendique sa fiche, il peut publier ses propres tarifs et créneaux et activer la réservation MecaConnect.</p></div></article>
         <article><span>05</span><div><h3>Confirmez selon les conditions du garage</h3><p>Chaque garage choisit s'il demande un acompte en ligne et son pourcentage. Si le paiement en ligne est activé, Stripe Checkout traite la transaction et MecaConnect ne stocke aucune donnée bancaire.</p></div></article>
         <article><span>06</span><div><h3>Suivez votre rendez-vous</h3><p>La réservation apparaît dans votre tableau de bord avec le garage, le véhicule, la date, le montant et son statut. Vous pouvez revenir consulter vos informations à tout moment.</p></div></article>
       </div>
