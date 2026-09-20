@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 const html=readFileSync(new URL('../public/index.html', import.meta.url),'utf8');
 const privacy=readFileSync(new URL('../public/privacy.html', import.meta.url),'utf8');
 const appSource=readFileSync(new URL('../src/app.ts', import.meta.url),'utf8');
+const enhancements=readFileSync(new URL('../src/enhancements.ts', import.meta.url),'utf8');
 
 test('HTML language and responsive viewport are declared',()=>{
   assert.match(html,/<html lang="fr">/);
@@ -70,4 +71,23 @@ test('navigation exposes home and garage workspace management',()=>{
   for(const token of ['/api/services/','/api/availability/','/api/bookings/','data-dashboard-tab="services"']) {
     assert.ok(appSource.includes(token));
   }
+});
+
+
+test('legal pages and professional registration are exposed',()=>{
+  for(const token of ['/mentions-legales','/confidentialite','/cgu','/cgv','garage-register-form','pro-siret']) {
+    assert.ok(html.includes(token));
+  }
+  assert.match(privacy,/Durées de conservation|Durées/i);
+  assert.match(privacy,/Responsable du traitement/i);
+});
+
+test('UX feedback fixes are implemented',()=>{
+  assert.match(html,/reg-password-error/);
+  assert.match(html,/reschedule-dialog/);
+  assert.match(enhancements,/api\/public\/address-search/);
+  assert.match(enhancements,/AA-123-AA/);
+  assert.match(enhancements,/data-user-cancel/);
+  assert.match(enhancements,/api\/privacy\/account/);
+  assert.match(enhancements,/api\/auth\/register-garage/);
 });
