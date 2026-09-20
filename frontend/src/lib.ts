@@ -13,6 +13,21 @@ export type Garage = {
   specialties?: string[];
   brands?: string[];
   hourly_rate?: number | null;
+  siret?: string | null;
+  siren?: string | null;
+  legal_name?: string | null;
+  payment_online_enabled?: boolean;
+  deposit_rate?: number;
+  phone?: string | null;
+  website_url?: string | null;
+  photo_url?: string | null;
+  photo_source_url?: string | null;
+  source_url?: string | null;
+  source_label?: string | null;
+  listing_status?: "PUBLIC_REFERENCE" | "CLAIMED_PARTNER" | "PENDING_VERIFICATION" | "DEMO_HIDDEN" | string;
+  booking_enabled?: boolean;
+  is_public?: boolean;
+  source_verified_at?: string | null;
 };
 
 export type Slot = {
@@ -36,7 +51,13 @@ export function filterGarages(
   return garages.filter((garage) => {
     const text = normalize(`${garage.name} ${garage.description}`);
     const queryMatches = !normalizedQuery || text.includes(normalizedQuery);
-    const cityMatches = !normalizedCity || normalize(garage.city) === normalizedCity;
+    const cityValue = normalize(garage.city);
+    const postalValue = normalize(garage.postal_code || "");
+    const cityMatches =
+      !normalizedCity ||
+      cityValue.includes(normalizedCity) ||
+      normalizedCity.includes(cityValue) ||
+      (!!postalValue && normalizedCity.includes(postalValue));
     return queryMatches && cityMatches;
   });
 }
@@ -59,6 +80,18 @@ export function isStrongPassword(value: string): boolean {
 
   const rules = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/];
   return rules.filter((rule) => rule.test(value)).length >= 3;
+}
+
+export function formatFrenchPlate(value: string): string {
+  const clean = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+  const first = clean.slice(0, 2);
+  const digits = clean.slice(2, 5);
+  const last = clean.slice(5, 7);
+  return [first, digits, last].filter(Boolean).join("-");
+}
+
+export function isFrenchPlate(value: string): boolean {
+  return /^[A-Z]{2}-\d{3}-[A-Z]{2}$/.test(value);
 }
 
 export function safeText(value: unknown): string {

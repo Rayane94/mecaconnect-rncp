@@ -56,6 +56,7 @@ class Vehicle(Base):
     model = Column(String(80), nullable=False)
     year = Column(Integer, nullable=False)
     plate = Column(String(24), nullable=True)
+    motorization = Column(String(80), nullable=True)
 
     owner = relationship("User", back_populates="vehicles")
 
@@ -79,6 +80,22 @@ class Garage(Base):
     specialties = Column(Text, default="multimarque,entretien", nullable=False)
     brands = Column(Text, default="multimarque", nullable=False)
     hourly_rate = Column(Float, nullable=True)
+    siret = Column(String(14), unique=True, index=True, nullable=True)
+    siren = Column(String(9), index=True, nullable=True)
+    legal_name = Column(String(180), nullable=True)
+    verification_source = Column(String(80), nullable=True)
+    payment_online_enabled = Column(Boolean, default=True, nullable=False)
+    deposit_rate = Column(Float, default=0.20, nullable=False)
+    phone = Column(String(40), nullable=True)
+    website_url = Column(String(500), nullable=True)
+    photo_url = Column(String(700), nullable=True)
+    photo_source_url = Column(String(700), nullable=True)
+    source_url = Column(String(700), nullable=True)
+    source_label = Column(String(160), nullable=True)
+    listing_status = Column(String(32), default="PUBLIC_REFERENCE", nullable=False)
+    booking_enabled = Column(Boolean, default=False, nullable=False)
+    is_public = Column(Boolean, default=True, nullable=False)
+    source_verified_at = Column(DateTime, nullable=True)
 
     services = relationship(
         "Service",
@@ -105,6 +122,9 @@ class Service(Base):
     description = Column(Text, nullable=True)
     price = Column(Float, nullable=False)
     duration_minutes = Column(Integer, default=60)
+    price_label = Column(String(120), nullable=True)
+    bookable = Column(Boolean, default=True, nullable=False)
+    source_url = Column(String(700), nullable=True)
 
     garage = relationship("Garage", back_populates="services")
 

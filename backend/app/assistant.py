@@ -506,7 +506,7 @@ def recommend_garages(
                             "price": service.price,
                             "duration_minutes": service.duration_minutes,
                         }
-                        if service
+                        if service and service.bookable and service.price > 0
                         else None
                     ),
                 },

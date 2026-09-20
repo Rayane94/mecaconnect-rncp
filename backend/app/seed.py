@@ -1,116 +1,418 @@
 from datetime import datetime, timedelta, timezone
 import os
+import re
+import unicodedata
 
+import httpx
 from sqlalchemy import select
 
-from .database import Base, SessionLocal, engine
+from .database import Base, SessionLocal, engine, ensure_schema_compatibility
 from .models import Availability, Garage, Service, User
 from .security import hash_password
 
 
-GARAGES = [
-    # Paris
-    {"name":"Garage Berthier","slug":"garage-berthier","city":"Paris","department":"75","postal_code":"75017","address":"Secteur Porte de Champerret - Paris 17e","lat":48.8877,"lng":2.3024,"rating":4.8,"specialties":"entretien,freinage,diagnostic,pneus","brands":"multimarque,mercedes,bmw,audi,renault,peugeot","hourly_rate":92},
-    {"name":"Atelier Bastille","slug":"atelier-bastille","city":"Paris","department":"75","postal_code":"75011","address":"Secteur Bastille - Paris 11e","lat":48.8530,"lng":2.3690,"rating":4.7,"specialties":"diagnostic,electricite,batterie,hybride","brands":"multimarque,renault,peugeot,citroen,toyota","hourly_rate":88},
-    {"name":"Meca Montparnasse","slug":"meca-montparnasse","city":"Paris","department":"75","postal_code":"75014","address":"Secteur Montparnasse - Paris 14e","lat":48.8329,"lng":2.3250,"rating":4.6,"specialties":"pneus,geometrie,suspension,freinage","brands":"multimarque,volkswagen,seat,skoda,ford","hourly_rate":86},
-    {"name":"Auto République","slug":"auto-republique","city":"Paris","department":"75","postal_code":"75010","address":"Secteur République - Paris 10e","lat":48.8675,"lng":2.3638,"rating":4.5,"specialties":"moteur,distribution,entretien,diagnostic","brands":"multimarque,renault,dacia,peugeot,citroen","hourly_rate":90},
-    {"name":"Atelier Bercy","slug":"atelier-bercy","city":"Paris","department":"75","postal_code":"75012","address":"Secteur Bercy - Paris 12e","lat":48.8356,"lng":2.3841,"rating":4.7,"specialties":"climatisation,entretien,diagnostic,electricite","brands":"multimarque,toyota,lexus,hyundai,kia","hourly_rate":89},
-    {"name":"Diesel Paris Nord","slug":"diesel-paris-nord","city":"Paris","department":"75","postal_code":"75018","address":"Secteur Porte de la Chapelle - Paris 18e","lat":48.8974,"lng":2.3595,"rating":4.6,"specialties":"diesel,fap,injection,diagnostic,moteur","brands":"multimarque,mercedes,bmw,audi,peugeot,citroen","hourly_rate":95},
-    # Hauts-de-Seine
-    {"name":"Seine Auto Boulogne","slug":"seine-auto-boulogne","city":"Boulogne-Billancourt","department":"92","postal_code":"92100","address":"Secteur Marcel Sembat - Boulogne-Billancourt","lat":48.8333,"lng":2.2430,"rating":4.8,"specialties":"entretien,freinage,climatisation,pneus","brands":"multimarque,renault,peugeot,citroen","hourly_rate":84},
-    {"name":"Atelier Défense","slug":"atelier-defense","city":"Courbevoie","department":"92","postal_code":"92400","address":"Secteur La Défense - Courbevoie","lat":48.8970,"lng":2.2520,"rating":4.7,"specialties":"diagnostic,electricite,hybride,electrique","brands":"multimarque,tesla,mercedes,bmw,audi","hourly_rate":105},
-    {"name":"Nanterre Transmission","slug":"nanterre-transmission","city":"Nanterre","department":"92","postal_code":"92000","address":"Secteur Nanterre Centre","lat":48.8924,"lng":2.2060,"rating":4.6,"specialties":"transmission,embrayage,diagnostic,moteur","brands":"multimarque,volkswagen,audi,bmw,mercedes","hourly_rate":98},
-    {"name":"Levallois Premium Auto","slug":"levallois-premium-auto","city":"Levallois-Perret","department":"92","postal_code":"92300","address":"Secteur Louise Michel - Levallois-Perret","lat":48.8932,"lng":2.2870,"rating":4.9,"specialties":"diagnostic,moteur,entretien,freinage","brands":"mercedes,bmw,audi,volvo,lexus","hourly_rate":118},
-    {"name":"Antony Auto Service","slug":"antony-auto-service","city":"Antony","department":"92","postal_code":"92160","address":"Secteur Antony Centre","lat":48.7535,"lng":2.2960,"rating":4.5,"specialties":"entretien,freinage,pneus,suspension","brands":"multimarque,renault,peugeot,citroen,dacia","hourly_rate":79},
-    # Seine-Saint-Denis
-    {"name":"Saint-Denis Diagnostic","slug":"saint-denis-diagnostic","city":"Saint-Denis","department":"93","postal_code":"93200","address":"Secteur Stade de France - Saint-Denis","lat":48.9302,"lng":2.3574,"rating":4.6,"specialties":"diagnostic,electricite,injection,diesel","brands":"multimarque,renault,peugeot,citroen,ford","hourly_rate":76},
-    {"name":"Montreuil Meca","slug":"montreuil-meca","city":"Montreuil","department":"93","postal_code":"93100","address":"Secteur Croix de Chavaux - Montreuil","lat":48.8575,"lng":2.4355,"rating":4.7,"specialties":"entretien,distribution,moteur,freinage","brands":"multimarque,renault,dacia,peugeot,citroen","hourly_rate":78},
-    {"name":"Aulnay Diesel Center","slug":"aulnay-diesel-center","city":"Aulnay-sous-Bois","department":"93","postal_code":"93600","address":"Secteur Aulnay Centre","lat":48.9380,"lng":2.4930,"rating":4.8,"specialties":"diesel,fap,injection,diagnostic","brands":"multimarque,peugeot,citroen,renault,mercedes","hourly_rate":82},
-    {"name":"Noisy Auto Tech","slug":"noisy-auto-tech","city":"Noisy-le-Grand","department":"93","postal_code":"93160","address":"Secteur Mont d'Est - Noisy-le-Grand","lat":48.8404,"lng":2.5480,"rating":4.5,"specialties":"hybride,electrique,diagnostic,climatisation","brands":"multimarque,toyota,hyundai,kia,tesla","hourly_rate":86},
-    # Val-de-Marne
-    {"name":"Créteil Auto Pro","slug":"creteil-auto-pro","city":"Créteil","department":"94","postal_code":"94000","address":"Secteur Créteil Université","lat":48.7904,"lng":2.4556,"rating":4.7,"specialties":"entretien,freinage,diagnostic,pneus","brands":"multimarque,renault,peugeot,citroen,toyota","hourly_rate":82},
-    {"name":"Vincennes Car Lab","slug":"vincennes-car-lab","city":"Vincennes","department":"94","postal_code":"94300","address":"Secteur Château de Vincennes","lat":48.8470,"lng":2.4370,"rating":4.8,"specialties":"diagnostic,electricite,hybride,climatisation","brands":"multimarque,toyota,lexus,volvo,volkswagen","hourly_rate":96},
-    {"name":"Ivry Pneus & Freins","slug":"ivry-pneus-freins","city":"Ivry-sur-Seine","department":"94","postal_code":"94200","address":"Secteur Ivry Centre","lat":48.8134,"lng":2.3886,"rating":4.6,"specialties":"pneus,freinage,geometrie,suspension","brands":"multimarque","hourly_rate":74},
-    {"name":"Vitry Moteur Service","slug":"vitry-moteur-service","city":"Vitry-sur-Seine","department":"94","postal_code":"94400","address":"Secteur Vitry Centre","lat":48.7872,"lng":2.3928,"rating":4.5,"specialties":"moteur,distribution,refroidissement,diagnostic","brands":"multimarque,renault,peugeot,citroen,ford","hourly_rate":80},
-    # Yvelines
-    {"name":"Versailles Auto Expert","slug":"versailles-auto-expert","city":"Versailles","department":"78","postal_code":"78000","address":"Secteur Versailles Chantiers","lat":48.7955,"lng":2.1355,"rating":4.9,"specialties":"diagnostic,entretien,freinage,transmission","brands":"multimarque,mercedes,bmw,audi,volvo","hourly_rate":102},
-    {"name":"Saint-Germain Atelier","slug":"saint-germain-atelier","city":"Saint-Germain-en-Laye","department":"78","postal_code":"78100","address":"Secteur Saint-Germain Centre","lat":48.8989,"lng":2.0938,"rating":4.7,"specialties":"entretien,climatisation,pneus,suspension","brands":"multimarque,volkswagen,audi,skoda,seat","hourly_rate":91},
-    {"name":"Montigny Transmission","slug":"montigny-transmission","city":"Montigny-le-Bretonneux","department":"78","postal_code":"78180","address":"Secteur Saint-Quentin-en-Yvelines","lat":48.7710,"lng":2.0340,"rating":4.6,"specialties":"transmission,embrayage,moteur,diagnostic","brands":"multimarque,ford,volkswagen,renault,peugeot","hourly_rate":88},
-    # Essonne
-    {"name":"Massy Hybrid Tech","slug":"massy-hybrid-tech","city":"Massy","department":"91","postal_code":"91300","address":"Secteur Massy-Palaiseau","lat":48.7252,"lng":2.2731,"rating":4.8,"specialties":"hybride,electrique,diagnostic,electricite","brands":"toyota,lexus,hyundai,kia,tesla,multimarque","hourly_rate":94},
-    {"name":"Évry Auto Centre","slug":"evry-auto-centre","city":"Évry-Courcouronnes","department":"91","postal_code":"91000","address":"Secteur Évry Centre","lat":48.6298,"lng":2.4410,"rating":4.6,"specialties":"entretien,freinage,pneus,distribution","brands":"multimarque,renault,peugeot,citroen,dacia","hourly_rate":75},
-    {"name":"Sainte-Geneviève Meca","slug":"sainte-genevieve-meca","city":"Sainte-Geneviève-des-Bois","department":"91","postal_code":"91700","address":"Secteur Sainte-Geneviève Centre","lat":48.6460,"lng":2.3190,"rating":4.5,"specialties":"moteur,refroidissement,diagnostic,climatisation","brands":"multimarque,ford,opel,renault,peugeot","hourly_rate":78},
-    # Val-d'Oise
-    {"name":"Cergy Auto Diagnostic","slug":"cergy-auto-diagnostic","city":"Cergy","department":"95","postal_code":"95000","address":"Secteur Cergy-Préfecture","lat":49.0369,"lng":2.0761,"rating":4.7,"specialties":"diagnostic,electricite,injection,entretien","brands":"multimarque,renault,peugeot,citroen,volkswagen","hourly_rate":82},
-    {"name":"Argenteuil Freinage","slug":"argenteuil-freinage","city":"Argenteuil","department":"95","postal_code":"95100","address":"Secteur Argenteuil Centre","lat":48.9472,"lng":2.2467,"rating":4.6,"specialties":"freinage,pneus,suspension,geometrie","brands":"multimarque","hourly_rate":76},
-    {"name":"Sarcelles Diesel & FAP","slug":"sarcelles-diesel-fap","city":"Sarcelles","department":"95","postal_code":"95200","address":"Secteur Sarcelles Centre","lat":48.9973,"lng":2.3784,"rating":4.5,"specialties":"diesel,fap,injection,echappement","brands":"multimarque,renault,peugeot,citroen,mercedes","hourly_rate":79},
-    # Seine-et-Marne
-    {"name":"Meaux Auto Service","slug":"meaux-auto-service","city":"Meaux","department":"77","postal_code":"77100","address":"Secteur Meaux Centre","lat":48.9601,"lng":2.8788,"rating":4.6,"specialties":"entretien,freinage,distribution,pneus","brands":"multimarque,renault,dacia,peugeot,citroen","hourly_rate":72},
-    {"name":"Melun Meca Expert","slug":"melun-meca-expert","city":"Melun","department":"77","postal_code":"77000","address":"Secteur Melun Centre","lat":48.5404,"lng":2.6600,"rating":4.7,"specialties":"moteur,diagnostic,transmission,embrayage","brands":"multimarque,ford,volkswagen,renault,peugeot","hourly_rate":77},
-    {"name":"Chelles Auto Tech","slug":"chelles-auto-tech","city":"Chelles","department":"77","postal_code":"77500","address":"Secteur Chelles-Gournay","lat":48.8774,"lng":2.5836,"rating":4.6,"specialties":"hybride,electrique,diagnostic,climatisation","brands":"multimarque,toyota,hyundai,kia,volkswagen","hourly_rate":83},
+# Catalogue public : uniquement des établissements réels et actifs vérifiés à partir
+# de sources publiques (SIRENE/RNE) et, pour les prestations/photos, des sites
+# officiels des garages/réseaux. Une fiche référencée n'implique aucun partenariat.
+REAL_GARAGES = [
+    {
+        "name": "Midas Paris 04 - Célestins",
+        "slug": "midas-paris-04-celestins",
+        "legal_name": "DOM AUTO",
+        "siret": "40308888300018",
+        "siren": "403088883",
+        "city": "Paris",
+        "department": "75",
+        "postal_code": "75004",
+        "address": "24-26 quai des Célestins, 75004 Paris",
+        "phone": "01 42 72 39 95",
+        "rating": 4.6,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/paris/paris-04/paris-04-celestins_1289",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1289_Paris04-Celestins.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/paris/paris-04/paris-04-celestins_1289",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Montreuil",
+        "slug": "midas-montreuil",
+        "legal_name": "SERVICES AUTOS",
+        "siret": "83209991500023",
+        "siren": "832099915",
+        "city": "Montreuil",
+        "department": "93",
+        "postal_code": "93100",
+        "address": "4-6 avenue Gabriel Péri, 93100 Montreuil",
+        "phone": "01 48 59 04 00",
+        "rating": 4.5,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-saint-denis/bobigny/montreuil_1031",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1031_%2BMontreuil.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-saint-denis/bobigny/montreuil_1031",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Meaux",
+        "slug": "midas-meaux",
+        "legal_name": "AUTO-SERVICES MEAUX",
+        "siret": "85346792600012",
+        "siren": "853467926",
+        "city": "Meaux",
+        "department": "77",
+        "postal_code": "77100",
+        "address": "36 rue François de Tessan, 77100 Meaux",
+        "phone": "01 60 09 80 91",
+        "rating": 4.4,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-et-marne/meaux/meaux_1168",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1168_%2BMeaux.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-et-marne/meaux/meaux_1168",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Chelles",
+        "slug": "midas-chelles",
+        "legal_name": "JNL SERVICES",
+        "siret": "90814361300028",
+        "siren": "908143613",
+        "city": "Chelles",
+        "department": "77",
+        "postal_code": "77500",
+        "address": "105 avenue du Gendarme Castermant, 77500 Chelles",
+        "phone": "01 64 26 65 67",
+        "rating": 4.5,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-et-marne/torcy/chelles_1340",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1340_Chelles.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-et-marne/torcy/chelles_1340",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique", "MIDAS Glass"],
+    },
+    {
+        "name": "Midas Versailles",
+        "slug": "midas-versailles",
+        "legal_name": "SAUSSEREAU MARTINS SOARES AUTOMOBILES",
+        "siret": "53008423500023",
+        "siren": "530084235",
+        "city": "Jouy-en-Josas",
+        "department": "78",
+        "postal_code": "78350",
+        "address": "48 rue du Pont Colbert, 78350 Jouy-en-Josas",
+        "phone": "01 39 51 27 72",
+        "rating": 4.7,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/yvelines/versailles/versailles_1061",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1061_%2BVersailles.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/yvelines/versailles/versailles_1061",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Deuil-la-Barre",
+        "slug": "midas-deuil-la-barre",
+        "legal_name": "3J3M",
+        "siret": "10573498200017",
+        "siren": "105734982",
+        "city": "Deuil-la-Barre",
+        "department": "95",
+        "postal_code": "95170",
+        "address": "18 avenue de la Division Leclerc, 95170 Deuil-la-Barre",
+        "phone": "01 84 74 59 09",
+        "rating": 4.9,
+        "specialties": "entretien,freinage,diagnostic,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/val-d-oise/sarcelles/deuil-la-barre_1716",
+        "photo_url": None,
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/val-d-oise/sarcelles/deuil-la-barre_1716",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Issy-les-Moulineaux",
+        "slug": "midas-issy-les-moulineaux",
+        "legal_name": "AUTO ISSY 92",
+        "siret": "82858931700027",
+        "siren": "828589317",
+        "city": "Issy-les-Moulineaux",
+        "department": "92",
+        "postal_code": "92130",
+        "address": "61 boulevard Rodin, 92130 Issy-les-Moulineaux",
+        "phone": "01 85 74 08 05",
+        "rating": 4.3,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/hauts-de-seine/boulogne-billancourt/issy-les-moulineaux_1599",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1599_%2BIssy%2BLes%2BMoulineaux.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/hauts-de-seine/boulogne-billancourt/issy-les-moulineaux_1599",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Argenteuil",
+        "slug": "midas-argenteuil",
+        "legal_name": "ANTOUN G.J.",
+        "siret": "80201150200027",
+        "siren": "802011502",
+        "city": "Argenteuil",
+        "department": "95",
+        "postal_code": "95100",
+        "address": "108-112 route de Pontoise, 95100 Argenteuil",
+        "phone": "01 30 25 50 39",
+        "rating": 4.5,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/val-d-oise/argenteuil/argenteuil_1452",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1452_Argenteuil.jpeg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/val-d-oise/argenteuil/argenteuil_1452",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Vitry-sur-Seine",
+        "slug": "midas-vitry-sur-seine",
+        "legal_name": "POP'S",
+        "siret": "84103585000020",
+        "siren": "841035850",
+        "city": "Vitry-sur-Seine",
+        "department": "94",
+        "postal_code": "94400",
+        "address": "123 boulevard de Stalingrad, 94400 Vitry-sur-Seine",
+        "phone": "01 46 72 35 35",
+        "rating": 4.5,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/val-de-marne/l-hay-les-roses/vitry-sur-seine_1259",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1259_%2BVitry%2BSur%2BSeine.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/val-de-marne/l-hay-les-roses/vitry-sur-seine_1259",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Paris 17 - Rue de Rome",
+        "slug": "midas-paris-17-rue-de-rome",
+        "legal_name": "NAJIB'S SON",
+        "siret": "52118323600020",
+        "siren": "521183236",
+        "city": "Paris",
+        "department": "75",
+        "postal_code": "75017",
+        "address": "131 rue de Rome, 75017 Paris",
+        "phone": "01 43 80 73 73",
+        "rating": 4.4,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/paris/paris-17/paris-17-rue-de-rome_1135",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1135_%2BParis%2B17%2B-%2BRue%2Bde%2BRome.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/paris/paris-17/paris-17-rue-de-rome_1135",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision"],
+    },
+    {
+        "name": "Midas Paris 18 - La Fourche",
+        "slug": "midas-paris-18-la-fourche",
+        "legal_name": "THE NEW CENTER",
+        "siret": "34092561900033",
+        "siren": "340925619",
+        "city": "Paris",
+        "department": "75",
+        "postal_code": "75018",
+        "address": "40 avenue de Saint-Ouen, 75018 Paris",
+        "phone": "01 46 27 51 52",
+        "rating": 4.7,
+        "specialties": "entretien,freinage,diagnostic,pneus,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/paris/paris-18/paris-18-la-fourche_1078",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1078_Paris-18-La-Fourche.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/paris/paris-18/paris-18-la-fourche_1078",
+        "services": ["Bilan sécurité", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Alisson Garage",
+        "slug": "alisson-garage-boulogne",
+        "legal_name": "ALISSON GARAGE",
+        "siret": "83397857000020",
+        "siren": "833978570",
+        "city": "Boulogne-Billancourt",
+        "department": "92",
+        "postal_code": "92100",
+        "address": "32 rue Gallieni, 92100 Boulogne-Billancourt",
+        "phone": "09 81 21 56 48",
+        "rating": 0.0,
+        "specialties": "entretien,freinage,pneus,jantes,distribution,embrayage,suspension",
+        "brands": "multimarque",
+        "website_url": "https://www.alissongarage.fr/",
+        "photo_url": None,
+        "source_url": "https://www.alissongarage.fr/nos-services",
+        "services": ["Pneus neufs et d'occasion", "Réparation de jantes", "Plaquettes de freins", "Courroie et embrayage", "Amortisseurs et triangles", "Montage et équilibrage", "Vidange", "Préparation au contrôle technique"],
+    },
+    {
+        "name": "Garage des 3 Communes",
+        "slug": "garage-des-3-communes",
+        "legal_name": "GARAGE DES 3 COMMUNES",
+        "siret": "40331528600019",
+        "siren": "403315286",
+        "city": "Montreuil",
+        "department": "93",
+        "postal_code": "93100",
+        "address": "190 bis rue de Romainville, 93100 Montreuil",
+        "phone": "01 42 87 97 16",
+        "rating": 4.1,
+        "specialties": "entretien,freinage,pneus,distribution,climatisation,carrosserie",
+        "brands": "peugeot,multimarque",
+        "website_url": "https://www.peugeotproximity.fr/garage/garage-des-3-communes",
+        "photo_url": None,
+        "source_url": "https://www.peugeotproximity.fr/garage/garage-des-3-communes/nous-contacter/choix-du-service",
+        "services": ["Révision vidange", "Pneumatiques été/hiver", "Amortisseurs", "Courroie de distribution", "Climatisation entretien & réparation", "Freins", "Contrôle technique (sous-traitance)"],
+    },
+    {
+        "name": "Midas Saint-Denis",
+        "slug": "midas-saint-denis",
+        "legal_name": "SMART GARAGE 2000",
+        "siret": "83845747100012",
+        "siren": "838457471",
+        "city": "Saint-Denis",
+        "department": "93",
+        "postal_code": "93200",
+        "address": "4 boulevard Marcel Sembat, 93200 Saint-Denis",
+        "phone": "01 77 37 05 30",
+        "rating": 4.6,
+        "specialties": "entretien,freinage,diagnostic,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-saint-denis/saint-denis/saint-denis_1605",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1605_%2BSaint%2BDenis-Stade%2Bde%2BFrance.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-saint-denis/saint-denis/saint-denis_1605",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Vert-Saint-Denis",
+        "slug": "midas-vert-saint-denis",
+        "legal_name": "POMPADOUR AUTO SERVICES",
+        "siret": "47815359600042",
+        "siren": "478153596",
+        "city": "Vert-Saint-Denis",
+        "department": "77",
+        "postal_code": "77240",
+        "address": "120 route Départementale 306, 77240 Vert-Saint-Denis",
+        "phone": "01 64 79 59 05",
+        "rating": 4.6,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-et-marne/melun/vert-saint-denis_1631",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1631_Vert%2BSaint%2BDenis.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/seine-et-marne/melun/vert-saint-denis_1631",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Midas Viry-Châtillon",
+        "slug": "midas-viry-chatillon",
+        "legal_name": "CAREFUL SERVICES",
+        "siret": "78894256300016",
+        "siren": "788942563",
+        "city": "Viry-Châtillon",
+        "department": "91",
+        "postal_code": "91170",
+        "address": "96 bis avenue du Général de Gaulle, 91170 Viry-Châtillon",
+        "phone": "01 69 00 66 36",
+        "rating": 4.6,
+        "specialties": "entretien,freinage,diagnostic,pneus,climatisation,distribution,embrayage,electrique",
+        "brands": "multimarque",
+        "website_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/essonne/evry/viry-chatillon_1503",
+        "photo_url": "https://media.midas.fr/shops/team/Centres/1503_Viry-Chatillon.jpg",
+        "source_url": "https://www.midas.fr/centres-auto-midas/ile-de-france/essonne/evry/viry-chatillon_1503",
+        "services": ["Bilan sécurité", "Climatisation", "Courroie de distribution", "Transmission et embrayage", "Révision", "Entretien véhicule électrique"],
+    },
+    {
+        "name": "Garage de Normandie",
+        "slug": "garage-de-normandie-nanterre",
+        "legal_name": "GARAGE DE NORMANDIE",
+        "siret": "34030305600022",
+        "siren": "340303056",
+        "city": "Nanterre",
+        "department": "92",
+        "postal_code": "92000",
+        "address": "98 route des Fusillés de la Résistance, 92000 Nanterre",
+        "phone": "01 47 32 15 16",
+        "rating": 4.5,
+        "specialties": "entretien,freinage,diagnostic,pneus,batterie,electricite,embrayage,carrosserie",
+        "brands": "peugeot,multimarque",
+        "website_url": "https://www.garagedenormandie.fr/",
+        "photo_url": "https://www.garagedenormandie.fr/ressources/images/customImage_558b_lg.jpeg",
+        "photo_source_url": "https://www.garagedenormandie.fr/",
+        "source_url": "https://www.garagedenormandie.fr/garage.php",
+        "services": ["Révision", "Vidange", "Diagnostic électronique", "Batterie", "Pneumatiques", "Freinage", "Embrayage", "Contrôle technique", "Réparation mécanique"],
+    },
+    {
+        "name": "Garage Auto Jesus",
+        "slug": "garage-auto-jesus-nanterre",
+        "legal_name": "GARAGE AUTO JESUS",
+        "siret": "52417469500014",
+        "siren": "524174695",
+        "city": "Nanterre",
+        "department": "92",
+        "postal_code": "92000",
+        "address": "129 rue de Suresnes, 92000 Nanterre",
+        "phone": None,
+        "rating": 0.0,
+        "specialties": "carrosserie,peinture,debosselage,optique,marbre",
+        "brands": "multimarque",
+        "website_url": None,
+        "photo_url": "https://static.where-e.com/France/Garage-Auto-Jesus_0f35c1b517a7ddfa4f79ee96c92fde59.jpg",
+        "photo_source_url": "https://garage-auto-jesus.wheree.com/",
+        "source_url": "https://www.118712.fr/professionnels/WkBWX1FSHgE",
+        "services": ["Carrosserie", "Peinture automobile", "Débosselage", "Rénovation optique", "Passage au marbre", "Véhicule de remplacement", "Voitures anciennes"],
+    },
+    {
+        "name": "Garage James Autos",
+        "slug": "garage-james-autos-creteil",
+        "legal_name": "JAMES AUTOS",
+        "siret": "40995469000023",
+        "siren": "409954690",
+        "city": "Créteil",
+        "department": "94",
+        "postal_code": "94000",
+        "address": "5 rue Jean Jaurès, 94000 Créteil",
+        "phone": None,
+        "rating": 0.0,
+        "specialties": "carrosserie,peinture,entretien,antipollution,depannage",
+        "brands": "multimarque",
+        "website_url": None,
+        "photo_url": None,
+        "source_url": "https://mes-commerces.ville-creteil.fr/professionnels/UkBXRlFfWFI",
+        "services": ["Carrosserie", "Peinture", "Réparation toutes marques", "Contrôle anti-pollution", "Dépannage", "Véhicule de remplacement"],
+    },
+    {
+        "name": "Audi Bauer Paris Roissy",
+        "slug": "audi-bauer-paris-roissy",
+        "legal_name": "BAUER PARIS",
+        "siret": "77566940100082",
+        "siren": "775669401",
+        "city": "Roissy-en-France",
+        "department": "95",
+        "postal_code": "95700",
+        "address": "1 rue des Marguilliers, 95700 Roissy-en-France",
+        "phone": "01 85 74 30 00",
+        "rating": 0.0,
+        "specialties": "entretien,freinage,diagnostic,pneus,carrosserie,batterie,electricite",
+        "brands": "audi",
+        "website_url": "https://www.bauerparis.fr/concessions-audi-bauer-paris/roissy-95/",
+        "photo_url": None,
+        "source_url": "https://www.bauerparis.fr/audi-service-entretien-reparation/bauer-paris-roissy-95/",
+        "services": ["Révision", "Freinage", "Batterie", "Pneumatiques", "Maintenance mécanique", "Carrosserie", "Pièces et accessoires d'origine"],
+    },
+
 ]
 
-SERVICE_CATALOG = {
-    "entretien": ("Révision / vidange", "Entretien périodique avec contrôles de niveaux et filtres selon besoin.", 129.0, 75),
-    "freinage": ("Contrôle freinage", "Contrôle du système de freinage et estimation des éléments à remplacer.", 59.0, 35),
-    "diagnostic": ("Diagnostic électronique", "Lecture des calculateurs et recherche initiale de panne.", 79.0, 45),
-    "pneus": ("Pneumatiques / équilibrage", "Contrôle pneus, pression et équilibrage. Prix hors pneumatiques neufs.", 69.0, 45),
-    "geometrie": ("Géométrie train roulant", "Contrôle et réglage de la géométrie lorsque possible.", 89.0, 60),
-    "suspension": ("Diagnostic suspension", "Recherche de jeu, bruit ou usure du train roulant.", 75.0, 45),
-    "electricite": ("Diagnostic électrique", "Contrôle batterie, charge, démarrage et alimentation électrique.", 85.0, 50),
-    "batterie": ("Contrôle batterie", "Test de batterie et circuit de charge.", 39.0, 25),
-    "hybride": ("Diagnostic hybride", "Diagnostic initial par atelier sensibilisé aux systèmes hybrides.", 99.0, 60),
-    "electrique": ("Diagnostic véhicule électrique", "Diagnostic initial hors intervention sur batterie haute tension.", 109.0, 60),
-    "moteur": ("Diagnostic moteur", "Contrôle mécanique et électronique initial du moteur.", 95.0, 60),
-    "distribution": ("Contrôle distribution", "Contrôle historique, bruits et échéance de distribution.", 69.0, 40),
-    "refroidissement": ("Contrôle refroidissement", "Recherche de fuite et contrôle du circuit de refroidissement.", 79.0, 45),
-    "diesel": ("Diagnostic diesel", "Contrôle moteur diesel et paramètres antipollution.", 89.0, 50),
-    "fap": ("Diagnostic FAP", "Mesure des paramètres FAP et recherche de cause avant régénération.", 99.0, 55),
-    "injection": ("Diagnostic injection", "Contrôle des paramètres d'injection et recherche de panne.", 99.0, 55),
-    "embrayage": ("Diagnostic embrayage", "Essai et contrôle initial de l'embrayage.", 79.0, 45),
-    "transmission": ("Diagnostic transmission", "Contrôle initial boîte, transmission et comportement des rapports.", 119.0, 60),
-    "climatisation": ("Diagnostic climatisation", "Contrôle de fonctionnement et pressions avant recharge ou réparation.", 69.0, 40),
-    "echappement": ("Contrôle échappement", "Recherche de fuite et contrôle de la ligne d'échappement.", 59.0, 35),
+PUBLIC_SOURCE_VERIFIED_AT = datetime(2026, 9, 20)
+
+DEMO_GARAGE = {
+    "name": "Atelier Démo MecaConnect",
+    "slug": "atelier-demo-mecaconnect",
+    "city": "Paris",
+    "department": "75",
+    "postal_code": "75017",
+    "address": "Donnée de démonstration non publiée",
+    "description": "Atelier fictif masqué du catalogue public, réservé aux tests de réservation et de paiement de certification.",
+    "specialties": "entretien,freinage,diagnostic,pneus",
+    "brands": "multimarque",
 }
-
-SPECIALTY_LABELS = {
-    "entretien": "l'entretien courant",
-    "freinage": "le freinage",
-    "diagnostic": "le diagnostic électronique",
-    "pneus": "les pneumatiques",
-    "geometrie": "la géométrie",
-    "suspension": "les trains roulants",
-    "electricite": "l'électricité automobile",
-    "batterie": "les batteries et circuits de charge",
-    "hybride": "les motorisations hybrides",
-    "electrique": "les véhicules électriques",
-    "moteur": "la mécanique moteur",
-    "distribution": "la distribution",
-    "refroidissement": "le refroidissement moteur",
-    "diesel": "les motorisations diesel",
-    "fap": "les systèmes FAP",
-    "injection": "l'injection",
-    "embrayage": "l'embrayage",
-    "transmission": "la transmission",
-    "climatisation": "la climatisation",
-    "echappement": "l'échappement",
-}
-
-
-def garage_description(data: dict) -> str:
-    specialties = [
-        SPECIALTY_LABELS[item]
-        for item in data["specialties"].split(",")[:3]
-        if item in SPECIALTY_LABELS
-    ]
-    if len(specialties) > 1:
-        expertise = ", ".join(specialties[:-1]) + f" et {specialties[-1]}"
-    else:
-        expertise = specialties[0] if specialties else "la mécanique automobile"
-    return (
-        f"Atelier situé à {data['city']}, spécialisé dans {expertise}. "
-        "Consultez les prestations, les tarifs et les prochains créneaux disponibles en ligne."
-    )
 
 
 def ensure_user(db, email: str, password: str, full_name: str, role: str) -> User:
@@ -128,55 +430,191 @@ def ensure_user(db, email: str, password: str, full_name: str, role: str) -> Use
     return user
 
 
-def add_services(db, garage: Garage) -> None:
-    if garage.services:
-        return
+def geocode_address(address: str) -> tuple[float | None, float | None]:
+    """Géocode une adresse officielle via la Géoplateforme IGN/BAN.
 
-    selected = []
-    for specialty in garage.specialties.split(","):
-        specialty = specialty.strip()
-        if specialty in SERVICE_CATALOG and specialty not in selected:
-            selected.append(specialty)
-        if len(selected) >= 4:
-            break
+    Les tests restent totalement hors-ligne. En production, un échec réseau ne
+    bloque jamais le seed : le garage reste consultable sans point cartographique.
+    """
+    if "test_mecaconnect" in os.getenv("DATABASE_URL", ""):
+        return None, None
 
-    for specialty in selected:
-        name, description, price, duration = SERVICE_CATALOG[specialty]
-        # Un léger écart simule les différences de tarif entre ateliers sans prétendre à un devis réel.
-        price_factor = max(0.88, min(1.18, (garage.hourly_rate or 80) / 85))
+    try:
+        response = httpx.get(
+            "https://data.geopf.fr/geocodage/search",
+            params={"q": address, "limit": 1},
+            timeout=4.0,
+        )
+        response.raise_for_status()
+        features = response.json().get("features") or []
+        if not features:
+            return None, None
+        coordinates = (features[0].get("geometry") or {}).get("coordinates") or []
+        if len(coordinates) != 2:
+            return None, None
+        return float(coordinates[1]), float(coordinates[0])
+    except Exception:
+        return None, None
+
+
+def public_description(data: dict) -> str:
+    return (
+        f"{data['name']} est un établissement réel référencé à partir de données "
+        f"publiques et du site officiel indiqué sur la fiche. SIRET {data['siret']}. "
+        "Cette présence dans MecaConnect n'implique pas un partenariat commercial. "
+        "Les prestations affichées sont celles publiées par l'établissement ou son réseau ; "
+        "les tarifs doivent être confirmés directement auprès du garage."
+    )
+
+
+def replace_sourced_services(db, garage: Garage, names: list[str], source_url: str) -> None:
+    # Ces services sont purement informatifs : pas de prix inventé ni de réservation
+    # MecaConnect tant que l'établissement n'a pas revendiqué/configuré sa fiche.
+    for service in list(garage.services):
+        if not service.bookable:
+            db.delete(service)
+    db.flush()
+
+    existing_bookable = {service.name for service in garage.services if service.bookable}
+    for name in names:
+        if name in existing_bookable:
+            continue
         db.add(
             Service(
                 garage_id=garage.id,
                 name=name,
-                description=description,
-                price=round(price * price_factor, 2),
-                duration_minutes=duration,
+                description="Prestation publiée par l'établissement ou son réseau officiel.",
+                price=0.0,
+                duration_minutes=60,
+                price_label="Tarif sur devis - non publié par MecaConnect",
+                bookable=False,
+                source_url=source_url,
             )
         )
 
 
-def add_slots(db, garage: Garage) -> None:
-    existing = db.scalar(select(Availability.id).where(Availability.garage_id == garage.id).limit(1))
-    if existing:
-        return
+def upsert_real_garage(db, data: dict) -> Garage:
+    garage = db.scalar(select(Garage).where(Garage.siret == data["siret"]))
+    if not garage:
+        garage = db.scalar(select(Garage).where(Garage.slug == data["slug"]))
 
-    tomorrow = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
-    first_slot = tomorrow.replace(hour=8, minute=30, second=0, microsecond=0)
+    lat = garage.lat if garage and garage.lat is not None else None
+    lng = garage.lng if garage and garage.lng is not None else None
+    if lat is None or lng is None:
+        lat, lng = geocode_address(data["address"])
 
-    for day in range(5):
-        for hour_offset in (0, 2, 4, 6):
-            starts_at = first_slot + timedelta(days=day, hours=hour_offset)
+    claimed = bool(garage and garage.owner_id)
+    values = {
+        "name": data["name"],
+        "slug": data["slug"],
+        "legal_name": data["legal_name"],
+        "siret": data["siret"],
+        "siren": data["siren"],
+        "city": data["city"],
+        "department": data["department"],
+        "postal_code": data["postal_code"],
+        "address": data["address"],
+        "phone": data["phone"],
+        "rating": data["rating"],
+        "specialties": data["specialties"],
+        "brands": data["brands"],
+        "website_url": data["website_url"],
+        "photo_url": data["photo_url"],
+        "photo_source_url": data.get("photo_source_url") or (data["source_url"] if data.get("photo_url") else None),
+        "source_url": data["source_url"],
+        "source_label": "SIRENE/RNE + site officiel de l'établissement ou du réseau",
+        "verification_source": "SIRENE/RNE",
+        "source_verified_at": PUBLIC_SOURCE_VERIFIED_AT,
+        "description": public_description(data),
+        "verified": True,
+        "listing_status": "CLAIMED_PARTNER" if claimed else "PUBLIC_REFERENCE",
+        "booking_enabled": garage.booking_enabled if claimed else False,
+        "payment_online_enabled": garage.payment_online_enabled if claimed else False,
+        "deposit_rate": float(garage.deposit_rate or 0.20) if claimed else 0.20,
+        "is_public": True,
+        "lat": lat,
+        "lng": lng,
+    }
+
+    if not garage:
+        garage = Garage(**values)
+        db.add(garage)
+        db.flush()
+    else:
+        for key, value in values.items():
+            setattr(garage, key, value)
+        db.flush()
+
+    replace_sourced_services(db, garage, data["services"], data["source_url"])
+    return garage
+
+
+def ensure_demo_garage(db, garage_user: User) -> Garage:
+    garage = db.scalar(select(Garage).where(Garage.slug == DEMO_GARAGE["slug"]))
+    if not garage:
+        garage = Garage(
+            owner_id=garage_user.id,
+            verified=True,
+            listing_status="DEMO_HIDDEN",
+            booking_enabled=True,
+            payment_online_enabled=True,
+            deposit_rate=0.20,
+            is_public=False,
+            rating=0.0,
+            source_label="Donnée interne de démonstration",
+            **DEMO_GARAGE,
+        )
+        db.add(garage)
+        db.flush()
+    else:
+        garage.owner_id = garage_user.id
+        garage.is_public = False
+        garage.booking_enabled = True
+        garage.listing_status = "DEMO_HIDDEN"
+        garage.payment_online_enabled = True
+        db.flush()
+
+    if not garage.services:
+        for name, description, price, duration in (
+            ("Révision / vidange - démo", "Prestation fictive utilisée pour tester le tunnel de réservation.", 120.0, 60),
+            ("Contrôle freinage - démo", "Prestation fictive utilisée pour tester le tunnel de réservation.", 80.0, 45),
+            ("Diagnostic électronique - démo", "Prestation fictive utilisée pour tester le tunnel de réservation.", 90.0, 45),
+        ):
             db.add(
-                Availability(
+                Service(
                     garage_id=garage.id,
-                    starts_at=starts_at,
-                    ends_at=starts_at + timedelta(minutes=60),
+                    name=name,
+                    description=description,
+                    price=price,
+                    duration_minutes=duration,
+                    price_label=None,
+                    bookable=True,
                 )
             )
+        db.flush()
+
+    existing_slot = db.scalar(
+        select(Availability.id).where(Availability.garage_id == garage.id).limit(1)
+    )
+    if not existing_slot:
+        tomorrow = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+        first = tomorrow.replace(hour=8, minute=30, second=0, microsecond=0)
+        for day in range(5):
+            for offset in (0, 2, 4):
+                start = first + timedelta(days=day, hours=offset)
+                db.add(
+                    Availability(
+                        garage_id=garage.id,
+                        starts_at=start,
+                        ends_at=start + timedelta(minutes=60),
+                    )
+                )
+    return garage
 
 
 def run() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compatibility()
     db = SessionLocal()
 
     try:
@@ -191,29 +629,23 @@ def run() -> None:
             db,
             "garage@mecaconnect.example.com",
             os.getenv("GARAGE_SEED_PASSWORD", "Garage-ChangeMe-2026!"),
-            "Garage Berthier",
+            "Garage Démo MecaConnect",
             "GARAGE",
         )
 
-        for data in GARAGES:
-            garage = db.scalar(select(Garage).where(Garage.slug == data["slug"]))
-            if not garage:
-                garage = Garage(
-                    owner_id=garage_user.id if data["slug"] == "garage-berthier" else None,
-                    description=garage_description(data),
-                    verified=True,
-                    **data,
-                )
-                db.add(garage)
-                db.flush()
-            else:
-                for key, value in data.items():
-                    setattr(garage, key, value)
-                garage.description = garage_description(data)
+        # Les anciens garages fictifs du prototype restent en base pour ne pas casser
+        # d'éventuelles relations historiques, mais disparaissent immédiatement du
+        # catalogue et de la carte publics.
+        legacy = db.scalars(select(Garage).where(Garage.siret.is_(None))).all()
+        for garage in legacy:
+            garage.is_public = False
+            if garage.slug != DEMO_GARAGE["slug"] and garage.owner_id == garage_user.id:
+                garage.owner_id = None
 
-            add_services(db, garage)
-            add_slots(db, garage)
+        for data in REAL_GARAGES:
+            upsert_real_garage(db, data)
 
+        ensure_demo_garage(db, garage_user)
         db.commit()
     finally:
         db.close()

@@ -1,4 +1,35 @@
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models import Availability, Garage, Service
+
 from .conftest import login
+
+
+def demo_booking_data():
+    db = SessionLocal()
+    try:
+        garage = db.scalar(select(Garage).where(Garage.slug == "atelier-demo-mecaconnect"))
+        assert garage is not None
+        service = db.scalar(
+            select(Service)
+            .where(Service.garage_id == garage.id, Service.bookable.is_(True))
+            .order_by(Service.id)
+        )
+        slot = db.scalar(
+            select(Availability)
+            .where(
+                Availability.garage_id == garage.id,
+                Availability.is_booked.is_(False),
+            )
+            .order_by(Availability.starts_at)
+        )
+        assert service is not None
+        assert slot is not None
+        return garage.id, service.id, slot.id
+    finally:
+        db.close()
+
 
 def test_health(client):
     r=client.get("/api/health"); assert r.status_code==200; assert r.json()["status"]=="ok"
@@ -59,19 +90,26 @@ def test_password_policy(client):
     assert r.status_code==422
 
 def test_public_garages(client):
-    r=client.get("/api/garages?city=Paris"); assert r.status_code==200; assert len(r.json())>=1
-    gid=r.json()[0]["id"]
-    d=client.get(f"/api/garages/{gid}"); assert d.status_code==200; assert len(d.json()["services"])>=1
+    r = client.get("/api/garages?city=Paris")
+    assert r.status_code == 200
+    assert len(r.json()) >= 1
+    garage = r.json()[0]
+    assert len(garage["siret"]) == 14
+    assert garage["listing_status"] in {"PUBLIC_REFERENCE", "CLAIMED_PARTNER"}
+    d = client.get(f"/api/garages/{garage['id']}")
+    assert d.status_code == 200
+    assert len(d.json()["services"]) >= 1
+    if garage["listing_status"] == "PUBLIC_REFERENCE":
+        assert all(service["bookable"] is False for service in d.json()["services"])
+        assert all(service["price_label"] for service in d.json()["services"])
 
 def test_booking_and_test_payment(client):
     # create a fresh user so slots remain available
     email="booking@example.com"
     client.post("/api/auth/register",json={"email":email,"password":"BookingStrong-2026!","full_name":"Booking User"})
     v=client.post("/api/vehicles",json={"make":"Mercedes","model":"CLA 200","year":2021,"plate":"AA-123-AA"}); assert v.status_code==201
-    garages=client.get("/api/garages").json(); g=garages[0]
-    detail=client.get(f"/api/garages/{g['id']}").json(); service=detail["services"][0]
-    slots=client.get(f"/api/availability?garage_id={g['id']}").json(); assert slots
-    b=client.post("/api/bookings",json={"service_id":service["id"],"slot_id":slots[0]["id"],"vehicle_id":v.json()["id"]}); assert b.status_code==201
+    garage_id, service_id, slot_id = demo_booking_data()
+    b=client.post("/api/bookings",json={"service_id":service_id,"slot_id":slot_id,"vehicle_id":v.json()["id"]}); assert b.status_code==201
     booking_id=b.json()["id"]
     p=client.post(f"/api/payments/{booking_id}/session"); assert p.status_code==200; assert p.json()["mode"]=="local-test"
     c=client.post(f"/api/payments/test/{booking_id}/confirm"); assert c.status_code==200; assert c.json()["booking_status"]=="CONFIRMED"
@@ -79,13 +117,11 @@ def test_booking_and_test_payment(client):
 def test_duplicate_slot_booking_rejected(client):
     # first user takes a slot
     client.post("/api/auth/register",json={"email":"firstslot@example.com","password":"FirstSlot-2026!","full_name":"First"})
-    g=client.get("/api/garages").json()[0]; d=client.get(f"/api/garages/{g['id']}").json(); s=d["services"][0]
-    slots=client.get(f"/api/availability?garage_id={g['id']}").json(); assert slots
-    slot_id=slots[0]["id"]
-    assert client.post("/api/bookings",json={"service_id":s["id"],"slot_id":slot_id}).status_code==201
+    garage_id, service_id, slot_id = demo_booking_data()
+    assert client.post("/api/bookings",json={"service_id":service_id,"slot_id":slot_id}).status_code==201
     client.post("/api/auth/logout")
     client.post("/api/auth/register",json={"email":"secondslot@example.com","password":"SecondSlot-2026!","full_name":"Second"})
-    r=client.post("/api/bookings",json={"service_id":s["id"],"slot_id":slot_id}); assert r.status_code==409
+    r=client.post("/api/bookings",json={"service_id":service_id,"slot_id":slot_id}); assert r.status_code==409
 
 def test_newsletter_double_optin(client):
     r=client.post("/api/newsletter/request",json={"email":"news@example.com"}); assert r.status_code==201
@@ -107,11 +143,21 @@ def test_privacy_export(client):
 def test_analytics_event_requires_explicit_call(client):
     r=client.post("/api/analytics/event",json={"event":"page_view","path":"/"}); assert r.status_code==204
 
-def test_idf_catalog_contains_many_garages(client):
+def test_public_catalog_contains_only_sourced_real_garages(client):
     garages = client.get("/api/garages").json()
-    assert len(garages) >= 30
+    assert len(garages) >= 20
+    assert all(garage.get("is_public") is True for garage in garages)
+    assert all(garage.get("siret") and len(garage["siret"]) == 14 for garage in garages)
+    assert all(garage.get("source_url") for garage in garages)
+    assert any(garage.get("photo_url") for garage in garages)
+    assert all(
+        (not garage.get("photo_url")) or garage.get("photo_source_url")
+        for garage in garages
+    )
+    assert all(garage.get("listing_status") in {"PUBLIC_REFERENCE", "CLAIMED_PARTNER"} for garage in garages)
+    assert all(garage.get("slug") != "atelier-demo-mecaconnect" for garage in garages)
     departments = {garage.get("department") for garage in garages}
-    assert {"75", "92", "93", "94", "95", "78", "91", "77"}.issubset(departments)
+    assert {"75", "77", "78", "91", "92", "93", "94", "95"}.issubset(departments)
 
 
 def test_assistant_diagnosis_recommends_specialist(client):
@@ -376,3 +422,165 @@ def test_garage_can_complete_paid_booking(client):
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "COMPLETED"
+
+
+def test_legal_pages_are_available(client):
+    for path in ("/mentions-legales", "/confidentialite", "/cgu", "/cgv"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "MecaConnect" in response.text
+
+
+def test_vehicle_plate_format_is_enforced(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "plate@example.com",
+            "password": "PlateStrong-2026!",
+            "full_name": "Plate User",
+        },
+    )
+    invalid = client.post(
+        "/api/vehicles",
+        json={"make": "Renault", "model": "Clio", "year": 2022, "plate": "abc123"},
+    )
+    assert invalid.status_code == 422
+    valid = client.post(
+        "/api/vehicles",
+        json={
+            "make": "Renault",
+            "model": "Clio",
+            "year": 2022,
+            "plate": "AA-123-AA",
+            "motorization": "Essence",
+        },
+    )
+    assert valid.status_code == 201
+
+
+def test_user_can_cancel_booking_and_slot_becomes_available(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "cancel-booking@example.com",
+            "password": "CancelBooking-2026!",
+            "full_name": "Cancel Booking",
+        },
+    )
+    garage_id, service_id, slot_id = demo_booking_data()
+    booking = client.post(
+        "/api/bookings",
+        json={"service_id": service_id, "slot_id": slot_id},
+    )
+    assert booking.status_code == 201
+    cancelled = client.patch(f"/api/bookings/{booking.json()['id']}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "CANCELLED"
+    available_ids = {
+        item["id"]
+        for item in client.get(f"/api/availability?garage_id={garage_id}").json()
+    }
+    assert slot_id in available_ids
+
+
+def test_professional_registration_uses_verified_siret(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_lookup(siret):
+        return {
+            "siret": siret,
+            "siren": siret[:9],
+            "legal_name": "Garage Test SAS",
+            "address": "1 rue du Test",
+            "city": "Paris",
+            "postal_code": "75001",
+            "activity": "4520A",
+        }
+
+    monkeypatch.setattr(main_module, "lookup_company_by_siret", fake_lookup)
+    response = client.post(
+        "/api/auth/register-garage",
+        json={
+            "email": "pro-siret@example.com",
+            "password": "GarageVerified-2026!",
+            "full_name": "Responsable Garage",
+            "phone": "0601020304",
+            "siret": "12345678900011",
+            "garage_name": "Garage Test",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["role"] == "GARAGE"
+    assert response.json()["verified"] is True
+
+
+
+def test_public_reference_cannot_be_booked(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "reference-only@example.com",
+            "password": "ReferenceOnly-2026!",
+            "full_name": "Reference User",
+        },
+    )
+    garage = next(
+        item
+        for item in client.get("/api/garages").json()
+        if item["listing_status"] == "PUBLIC_REFERENCE"
+    )
+    detail = client.get(f"/api/garages/{garage['id']}").json()
+    assert detail["booking_enabled"] is False
+    assert client.get(f"/api/availability?garage_id={garage['id']}").json() == []
+    assert all(service["bookable"] is False for service in detail["services"])
+
+
+def test_existing_public_listing_can_be_claimed_after_siret_verification(client, monkeypatch):
+    import app.main as main_module
+
+    db = SessionLocal()
+    try:
+        garage = db.scalar(
+            select(Garage)
+            .where(Garage.listing_status == "PUBLIC_REFERENCE", Garage.owner_id.is_(None))
+            .order_by(Garage.id)
+        )
+        assert garage is not None
+        siret = garage.siret
+        siren = garage.siren
+        legal_name = garage.legal_name
+        city = garage.city
+        address = garage.address
+        postal_code = garage.postal_code
+    finally:
+        db.close()
+
+    async def fake_lookup(value):
+        assert value == siret
+        return {
+            "siret": siret,
+            "siren": siren,
+            "legal_name": legal_name,
+            "address": address,
+            "city": city,
+            "postal_code": postal_code,
+            "activity": "4520A",
+        }
+
+    monkeypatch.setattr(main_module, "lookup_company_by_siret", fake_lookup)
+    response = client.post(
+        "/api/auth/register-garage",
+        json={
+            "email": "claim-existing@example.com",
+            "password": "ClaimExisting-2026!",
+            "full_name": "Responsable Réel",
+            "phone": "0600000001",
+            "siret": siret,
+            "garage_name": "Garage revendiqué",
+        },
+    )
+    assert response.status_code == 201
+    dashboard = client.get("/api/garage/dashboard").json()
+    claimed = next(item for item in dashboard["garages"] if item["siret"] == siret)
+    assert claimed["listing_status"] == "CLAIMED_PARTNER"
+    assert claimed["booking_enabled"] is True
