@@ -200,6 +200,7 @@ def garage_to_dict(garage: models.Garage) -> dict:
         "phone": garage.phone,
         "website_url": garage.website_url,
         "photo_url": garage.photo_url,
+        "photo_source_url": garage.photo_source_url,
         "source_url": garage.source_url,
         "source_label": garage.source_label,
         "listing_status": garage.listing_status,
