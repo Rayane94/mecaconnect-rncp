@@ -51,6 +51,20 @@ def ensure_schema_compatibility() -> None:
             "verification_source": "VARCHAR(80)",
             "payment_online_enabled": "BOOLEAN DEFAULT TRUE NOT NULL",
             "deposit_rate": "FLOAT DEFAULT 0.20 NOT NULL",
+            "phone": "VARCHAR(40)",
+            "website_url": "VARCHAR(500)",
+            "photo_url": "VARCHAR(700)",
+            "source_url": "VARCHAR(700)",
+            "source_label": "VARCHAR(160)",
+            "listing_status": "VARCHAR(32) DEFAULT 'PUBLIC_REFERENCE' NOT NULL",
+            "booking_enabled": "BOOLEAN DEFAULT FALSE NOT NULL",
+            "is_public": "BOOLEAN DEFAULT TRUE NOT NULL",
+            "source_verified_at": "DATETIME",
+        },
+        "services": {
+            "price_label": "VARCHAR(120)",
+            "bookable": "BOOLEAN DEFAULT TRUE NOT NULL",
+            "source_url": "VARCHAR(700)",
         },
     }
 
