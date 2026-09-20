@@ -86,6 +86,15 @@ class Garage(Base):
     verification_source = Column(String(80), nullable=True)
     payment_online_enabled = Column(Boolean, default=True, nullable=False)
     deposit_rate = Column(Float, default=0.20, nullable=False)
+    phone = Column(String(40), nullable=True)
+    website_url = Column(String(500), nullable=True)
+    photo_url = Column(String(700), nullable=True)
+    source_url = Column(String(700), nullable=True)
+    source_label = Column(String(160), nullable=True)
+    listing_status = Column(String(32), default="PUBLIC_REFERENCE", nullable=False)
+    booking_enabled = Column(Boolean, default=False, nullable=False)
+    is_public = Column(Boolean, default=True, nullable=False)
+    source_verified_at = Column(DateTime, nullable=True)
 
     services = relationship(
         "Service",
@@ -112,6 +121,9 @@ class Service(Base):
     description = Column(Text, nullable=True)
     price = Column(Float, nullable=False)
     duration_minutes = Column(Integer, default=60)
+    price_label = Column(String(120), nullable=True)
+    bookable = Column(Boolean, default=True, nullable=False)
+    source_url = Column(String(700), nullable=True)
 
     garage = relationship("Garage", back_populates="services")
 
