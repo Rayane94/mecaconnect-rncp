@@ -59,7 +59,7 @@ def ensure_schema_compatibility() -> None:
             "listing_status": "VARCHAR(32) DEFAULT 'PUBLIC_REFERENCE' NOT NULL",
             "booking_enabled": "BOOLEAN DEFAULT FALSE NOT NULL",
             "is_public": "BOOLEAN DEFAULT TRUE NOT NULL",
-            "source_verified_at": "DATETIME",
+            "source_verified_at": "TIMESTAMP",
         },
         "services": {
             "price_label": "VARCHAR(120)",
