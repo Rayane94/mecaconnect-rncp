@@ -49,6 +49,11 @@ class RegisterGarageIn(BaseModel):
         return value
 
 
+class ApproveGarageClaimIn(BaseModel):
+    proof_type: str = Field(min_length=4, max_length=80)
+    proof_reference: str = Field(min_length=5, max_length=200)
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
