@@ -503,7 +503,12 @@ def upsert_real_garage(db, data: dict) -> Garage:
     if lat is None or lng is None:
         lat, lng = geocode_address(data["address"])
 
-    claimed = bool(garage and garage.owner_id)
+    claimed = bool(
+        garage
+        and garage.owner_id
+        and garage.listing_status == "CLAIMED_PARTNER"
+    )
+    pending = bool(garage and garage.listing_status == "PENDING_VERIFICATION")
     values = {
         "name": data["name"],
         "slug": data["slug"],
@@ -527,9 +532,13 @@ def upsert_real_garage(db, data: dict) -> Garage:
         "source_verified_at": PUBLIC_SOURCE_VERIFIED_AT,
         "description": public_description(data),
         "verified": True,
-        "listing_status": "CLAIMED_PARTNER" if claimed else "PUBLIC_REFERENCE",
-        "booking_enabled": garage.booking_enabled if claimed else False,
-        "payment_online_enabled": garage.payment_online_enabled if claimed else False,
+        "listing_status": (
+            "CLAIMED_PARTNER" if claimed else
+            "PENDING_VERIFICATION" if pending else
+            "PUBLIC_REFERENCE"
+        ),
+        "booking_enabled": bool(garage.booking_enabled) if claimed else False,
+        "payment_online_enabled": bool(garage.payment_online_enabled) if claimed else False,
         "deposit_rate": float(garage.deposit_rate or 0.20) if claimed else 0.20,
         "is_public": True,
         "lat": lat,
@@ -541,8 +550,15 @@ def upsert_real_garage(db, data: dict) -> Garage:
         db.add(garage)
         db.flush()
     else:
+        # Après validation, les champs gérés par le professionnel ne sont
+        # plus écrasés par le seed à chaque redéploiement.
+        managed = {
+            "name", "description", "specialties", "brands", "payment_online_enabled",
+            "deposit_rate", "booking_enabled",
+        } if claimed else set()
         for key, value in values.items():
-            setattr(garage, key, value)
+            if key not in managed:
+                setattr(garage, key, value)
         db.flush()
 
     replace_sourced_services(db, garage, data["services"], data["source_url"])
