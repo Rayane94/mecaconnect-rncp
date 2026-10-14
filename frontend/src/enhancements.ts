@@ -162,9 +162,9 @@ function setupProRegistration() {
           garage_name: document.getElementById("pro-garage-name").value.trim(),
         }),
       });
-      result.textContent = "SIRET vérifié. Votre espace professionnel est créé.";
+      result.textContent = "SIRET retrouvé. Demande enregistrée : votre accès professionnel reste en attente d'une vérification manuelle.";
       result.className = "company-check success";
-      window.location.href = "/espace-garage";
+      form.reset();
     } catch (error) {
       result.textContent = error.message;
       result.className = "company-check error";
