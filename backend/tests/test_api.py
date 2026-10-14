@@ -510,8 +510,19 @@ def test_professional_registration_uses_verified_siret(client, monkeypatch):
         },
     )
     assert response.status_code == 201
-    assert response.json()["role"] == "GARAGE"
+    assert response.json()["role"] == "GARAGE_PENDING"
     assert response.json()["verified"] is True
+    assert response.json()["professional_status"] == "PENDING_VERIFICATION"
+    assert client.get("/api/garage/dashboard").status_code == 403
+    assert client.post(
+        "/api/services",
+        json={
+            "garage_id": response.json()["garage_id"],
+            "name": "Service frauduleux",
+            "price": 99.0,
+            "duration_minutes": 60,
+        },
+    ).status_code == 403
 
 
 
@@ -580,7 +591,100 @@ def test_existing_public_listing_can_be_claimed_after_siret_verification(client,
         },
     )
     assert response.status_code == 201
-    dashboard = client.get("/api/garage/dashboard").json()
-    claimed = next(item for item in dashboard["garages"] if item["siret"] == siret)
-    assert claimed["listing_status"] == "CLAIMED_PARTNER"
-    assert claimed["booking_enabled"] is True
+    assert response.json()["role"] == "GARAGE_PENDING"
+    assert client.get("/api/garage/dashboard").status_code == 403
+    # L'existence du SIRET ne prouve pas le mandat du demandeur.
+    from app import models
+    db = SessionLocal()
+    try:
+        stored = db.get(models.Garage, response.json()["garage_id"])
+        assert stored.siret == siret
+        assert stored.listing_status == "PENDING_VERIFICATION"
+        assert stored.booking_enabled is False
+    finally:
+        db.close()
+
+
+
+def test_cancelled_slot_can_be_booked_again_without_losing_history(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "rebook-first@example.com",
+            "password": "RebookingFirst-2026!",
+            "full_name": "First User",
+        },
+    )
+    garage_id, service_id, slot_id = demo_booking_data()
+    first = client.post(
+        "/api/bookings",
+        json={"service_id": service_id, "slot_id": slot_id},
+    )
+    assert first.status_code == 201
+    first_id = first.json()["id"]
+    assert client.patch(f"/api/bookings/{first_id}/cancel").status_code == 200
+    client.post("/api/auth/logout")
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "rebook-second@example.com",
+            "password": "RebookingSecond-2026!",
+            "full_name": "Second User",
+        },
+    )
+    second = client.post(
+        "/api/bookings",
+        json={"service_id": service_id, "slot_id": slot_id},
+    )
+    assert second.status_code == 201
+    assert second.json()["id"] != first_id
+
+
+def test_pending_garage_claim_only_admin_can_approve(client, monkeypatch):
+    import app.main as main_module
+    async def fake_lookup(siret):
+        return {
+            "siret": siret, "siren": siret[:9],
+            "legal_name": "Atelier exemple", "address": "1 rue du Test",
+            "city": "Paris", "postal_code": "75001", "activity": "4520A",
+        }
+    monkeypatch.setattr(main_module, "lookup_company_by_siret", fake_lookup)
+    reg = client.post(
+        "/api/auth/register-garage",
+        json={
+            "email": "pending-approval@example.com",
+            "password": "Approver-Password-2026!",
+            "full_name": "Responsable Atelier",
+            "siret": "12345678901122",
+            "garage_name": "Garage Test Professionnel",
+        },
+    )
+    assert reg.status_code == 201
+    garage_id = reg.json()["garage_id"]
+    proof = {"proof_type": "mandat", "proof_reference": "justificatif-verifie-par-admin"}
+    assert client.post(
+        f"/api/admin/garage-claims/{garage_id}/approve",
+        json=proof,
+    ).status_code == 403
+
+    client.post("/api/auth/logout")
+    login(client)
+    pending = client.get("/api/admin/garage-claims")
+    assert pending.status_code == 200
+    assert any(item["garage_id"] == garage_id for item in pending.json())
+    approved = client.post(
+        f"/api/admin/garage-claims/{garage_id}/approve",
+        json=proof,
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "CLAIMED_PARTNER"
+    client.post("/api/auth/logout")
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": "pending-approval@example.com",
+            "password": "Approver-Password-2026!",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["user"]["role"] == "GARAGE"

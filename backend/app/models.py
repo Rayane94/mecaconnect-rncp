@@ -156,11 +156,12 @@ class Booking(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
     service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
+    # Plusieurs réservations historiques peuvent concerner le même créneau
+    # après annulation ; une seule peut rester active (index partiel en base).
     slot_id = Column(
         Integer,
         ForeignKey("availability.id"),
         nullable=False,
-        unique=True,
     )
     status = Column(String(24), default="PENDING_PAYMENT", nullable=False)
     total_amount = Column(Float, nullable=False)

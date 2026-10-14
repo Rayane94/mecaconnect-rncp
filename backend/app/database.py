@@ -81,6 +81,27 @@ def ensure_schema_compatibility() -> None:
                     )
 
 
+    # Un ancien schéma interdisait toute deuxième réservation d'un créneau,
+    # même après annulation. Le modèle actuel garde l'historique et n'autorise
+    # qu'une réservation active par créneau.
+    if "bookings" in inspector.get_table_names():
+        if engine.dialect.name == "postgresql":
+            with engine.begin() as connection:
+                for unique in inspect(connection).get_unique_constraints("bookings"):
+                    if set(unique.get("column_names") or []) == {"slot_id"}:
+                        name = unique.get("name") or ""
+                        if name and all(char.isalnum() or char == "_" for char in name):
+                            connection.execute(
+                                text(f'ALTER TABLE bookings DROP CONSTRAINT "{name}"')
+                            )
+        with engine.begin() as connection:
+            connection.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_active_booking_slot "
+                "ON bookings (slot_id) "
+                "WHERE status IN ('PENDING_PAYMENT', 'CONFIRMED')"
+            ))
+
+
 def get_db():
     db = SessionLocal()
     try:

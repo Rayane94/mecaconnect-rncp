@@ -403,7 +403,7 @@ async def register_garage(
         email=email,
         password_hash=hash_password(payload.password),
         full_name=payload.full_name.strip(),
-        role="GARAGE",
+        role="GARAGE_PENDING",
         phone_encrypted=encrypt_text(payload.phone),
     )
     db.add(user)
@@ -412,11 +412,11 @@ async def register_garage(
     if existing_garage:
         garage = existing_garage
         garage.owner_id = user.id
-        garage.verified = True
-        garage.listing_status = "CLAIMED_PARTNER"
-        garage.booking_enabled = True
+        garage.verified = True  # SIRET public vérifié ; propriété NON encore confirmée.
+        garage.listing_status = "PENDING_VERIFICATION"
+        garage.booking_enabled = False
         garage.is_public = True
-        garage.payment_online_enabled = True
+        garage.payment_online_enabled = False
         garage.deposit_rate = float(garage.deposit_rate or 0.20)
         garage.siren = company["siren"]
         garage.legal_name = company["legal_name"]
@@ -442,10 +442,10 @@ async def register_garage(
             siren=company["siren"],
             legal_name=company["legal_name"],
             verification_source="Annuaire des Entreprises / API publique",
-            listing_status="CLAIMED_PARTNER",
-            booking_enabled=True,
-            is_public=True,
-            payment_online_enabled=True,
+            listing_status="PENDING_VERIFICATION",
+            booking_enabled=False,
+            is_public=False,
+            payment_online_enabled=False,
             deposit_rate=0.20,
         )
         db.add(garage)
@@ -471,7 +471,61 @@ async def register_garage(
         "garage_id": garage.id,
         "siret": garage.siret,
         "verified": garage.verified,
+        "professional_status": "PENDING_VERIFICATION",
+        "message": "SIRET identifié. Le rattachement au garage attend la vérification de votre qualité de représentant.",
     }
+
+
+@app.get("/api/admin/garage-claims")
+def pending_garage_claims(
+    user: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    pending = db.scalars(
+        select(models.Garage).where(
+            models.Garage.listing_status == "PENDING_VERIFICATION",
+            models.Garage.owner_id.is_not(None),
+        )
+    ).all()
+    return [
+        {
+            "garage_id": item.id,
+            "name": item.name,
+            "siret": item.siret,
+            "legal_name": item.legal_name,
+            "claimant_id": item.owner_id,
+            "claimant_email": db.get(models.User, item.owner_id).email,
+            "status": item.listing_status,
+        }
+        for item in pending
+    ]
+
+
+@app.post("/api/admin/garage-claims/{garage_id}/approve")
+def approve_garage_claim(
+    garage_id: int,
+    payload: schemas.ApproveGarageClaimIn,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or garage.listing_status != "PENDING_VERIFICATION" or not garage.owner_id:
+        raise HTTPException(status_code=404, detail="Demande de rattachement introuvable")
+    claimant = db.get(models.User, garage.owner_id)
+    if not claimant or claimant.role != "GARAGE_PENDING":
+        raise HTTPException(status_code=409, detail="Demande professionnelle incohérente")
+    # L'administrateur atteste avoir contrôlé hors application un élément prouvant
+    # la qualité du représentant. Un SIRET public, seul, n'est JAMAIS une preuve.
+    claimant.role = "GARAGE"
+    garage.listing_status = "CLAIMED_PARTNER"
+    garage.booking_enabled = True
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(
+        db, admin.id, "APPROVE_GARAGE_CLAIM", "garage",
+        f"id={garage.id};proof={payload.proof_type};ref={payload.proof_reference[:80]}",
+    )
+    return {"garage_id": garage.id, "status": "CLAIMED_PARTNER", "booking_enabled": True}
 
 
 @app.post("/api/auth/login")
