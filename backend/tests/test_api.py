@@ -594,7 +594,6 @@ def test_existing_public_listing_can_be_claimed_after_siret_verification(client,
     assert response.json()["role"] == "GARAGE_PENDING"
     assert client.get("/api/garage/dashboard").status_code == 403
     # L'existence du SIRET ne prouve pas le mandat du demandeur.
-    from app.database import SessionLocal
     db = SessionLocal()
     try:
         stored = db.get(models.Garage, response.json()["garage_id"])
