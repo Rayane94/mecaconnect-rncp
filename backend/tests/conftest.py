@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine
-from app.main import app
+from app.main import app, request_history
 from app.seed import run as seed
 
 
@@ -36,6 +36,9 @@ def db_setup():
 
 @pytest.fixture()
 def client():
+    # La limite par IP s'applique sur 60 s en production, mais des tests
+    # indépendants ne doivent pas partager le compteur d'un test précédent.
+    request_history.clear()
     return TestClient(app)
 
 
