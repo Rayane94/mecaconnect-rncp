@@ -2,7 +2,7 @@
 
 - Minimisation : identité, coordonnées nécessaires, véhicules, réservation et paiement uniquement.
 - Consentement analytics : aucun outil optionnel avant validation du choix dans le centre de préférences.
-- Newsletter : deux étapes fonctionnelles dans le prototype ; la route de démonstration ne constitue pas un véritable canal e-mail indépendant. À sécuriser avec un prestataire d'envoi avant commercialisation.
+- Newsletter : deux étapes fonctionnelles dans le prototype ; le code corrigé exige un envoi SMTP pour l'activation publique. En son absence, la demande est refusée et aucun jeton n'est divulgué. La délivrabilité et les règles commerciales restent à tester.
 - Droit d'accès/portabilité : endpoint `/api/privacy/export`.
 - Droit à l'effacement : endpoint `DELETE /api/privacy/account`, avec anonymisation lorsque la conservation d'un historique est nécessaire.
 - Politique de confidentialité : page publique disponible sur `/confidentialite` et préférence cookies révisable depuis le pied de page.
