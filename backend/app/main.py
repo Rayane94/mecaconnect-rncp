@@ -21,7 +21,10 @@ from . import models, schemas
 from .assistant import build_diagnosis, prepare_conversation_message
 from .ai_assistant import ai_is_configured, configured_model, enhance_diagnosis
 from .database import Base, engine, ensure_schema_compatibility, get_db
-from .payment import StripeHttpProvider, get_payment_provider
+from .payment import (
+    LocalTestPaymentProvider, StripeHttpProvider, get_payment_provider,
+    local_test_payments_enabled,
+)
 from .security import (
     create_access_token,
     decode_access_token,
@@ -1328,6 +1331,11 @@ async def create_payment_session(
         return {"status": "SUCCEEDED"}
 
     provider = get_payment_provider()
+    if isinstance(provider, LocalTestPaymentProvider) and not local_test_payments_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Paiement en ligne indisponible : Stripe Test n'est pas configuré",
+        )
     result = await provider.create_test_payment(booking.id, booking.deposit_amount)
 
     payment = booking.payment or models.Payment(
@@ -1336,7 +1344,8 @@ async def create_payment_session(
     )
     payment.provider_reference = result.get("provider_reference")
     payment.status = "CREATED"
-    payment.provider = "STRIPE_TEST"
+    payment.provider = ("LOCAL_TEST" if result.get("mode") == "local-test"
+                        else "STRIPE_TEST")
 
     db.add(payment)
     db.commit()
@@ -1359,8 +1368,17 @@ def confirm_local_test_payment(
     if not booking or (booking.user_id != user.id and user.role != "ADMIN"):
         raise HTTPException(status_code=404, detail="Réservation introuvable")
 
+    if not local_test_payments_enabled():
+        raise HTTPException(
+            status_code=403, detail="Confirmation de paiement simulé interdite en ligne",
+        )
     if not booking.payment:
         raise HTTPException(status_code=400, detail="Session de paiement absente")
+    if (booking.payment.provider != "LOCAL_TEST" or
+            not (booking.payment.provider_reference or "").startswith("local_test_")):
+        raise HTTPException(
+            status_code=400, detail="La réservation ne possède pas de paiement local de test",
+        )
 
     booking.payment.status = "SUCCEEDED"
     booking.status = "CONFIRMED"
