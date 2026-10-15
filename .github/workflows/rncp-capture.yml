@@ -1,0 +1,57 @@
+name: RNCP evidence capture (local current branch)
+on:
+  push:
+    branches:
+      - rncp-c19-c32-corrections-2026
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt playwright
+          python -m playwright install --with-deps chromium
+          cd frontend
+          npm ci
+          npm run build
+      - name: Start local MecaConnect from HEAD
+        env:
+          DATABASE_URL: sqlite:////tmp/mecaconnect-evidence.sqlite
+          JWT_SECRET: evidence-only-ci-secret-strong-random-placeholder
+          ADMIN_SEED_PASSWORD: CI-Admin-Only-DoNotReuse-2026!
+          GARAGE_SEED_PASSWORD: CI-Garage-Only-DoNotReuse-2026!
+          APP_BASE_URL: http://127.0.0.1:8000
+          CORS_ORIGINS: http://127.0.0.1:8000
+        run: |
+          cd backend
+          PYTHONPATH=. python -m app.seed
+          PYTHONPATH=. uvicorn app.main:app --host 127.0.0.1 --port 8000 >/tmp/mecaconnect-browser.log 2>&1 &
+          for n in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/api/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/mecaconnect-browser.log
+          exit 1
+      - name: Capture actual browser render and check production access
+        run: python scripts/capture_evidence.py
+      - name: Archive checked-out sources for offline analysis
+        run: |
+          mkdir -p evidence/2026-10-current
+          tar -czf evidence/2026-10-current/code-from-head.tar.gz --exclude=.git --exclude=node_modules --exclude=__pycache__ --exclude=evidence .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mecaconnect-current-evidence
+          path: evidence/2026-10-current/
+          retention-days: 14

@@ -1289,7 +1289,8 @@ async function loadDashboard(): Promise<void> {
 async function updateSession(): Promise<void> {
   try {
     state.user = await api<User>("/api/auth/me");
-    element("account-label").textContent = state.user.full_name;
+    element("account-label").textContent = "Mon compte";
+    element<HTMLButtonElement>("account-label").title = state.user.full_name;
     element<HTMLButtonElement>("logout").hidden = false;
     element<HTMLButtonElement>("dashboard-label").hidden = false;
   } catch {

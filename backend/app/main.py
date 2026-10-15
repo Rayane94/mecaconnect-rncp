@@ -1,4 +1,6 @@
 import logging
+import smtplib
+from email.message import EmailMessage
 import os
 import secrets
 import time
@@ -21,7 +23,10 @@ from . import models, schemas
 from .assistant import build_diagnosis, prepare_conversation_message
 from .ai_assistant import ai_is_configured, configured_model, enhance_diagnosis
 from .database import Base, engine, ensure_schema_compatibility, get_db
-from .payment import StripeHttpProvider, get_payment_provider
+from .payment import (
+    LocalTestPaymentProvider, StripeHttpProvider, get_payment_provider,
+    local_test_payments_enabled,
+)
 from .security import (
     create_access_token,
     decode_access_token,
@@ -518,6 +523,7 @@ def approve_garage_claim(
     # la qualité du représentant. Un SIRET public, seul, n'est JAMAIS une preuve.
     claimant.role = "GARAGE"
     garage.listing_status = "CLAIMED_PARTNER"
+    garage.is_public = True  # Une nouvelle fiche approuvée devient consultable publiquement.
     garage.booking_enabled = True
     garage.payment_online_enabled = False
     db.commit()
@@ -1328,6 +1334,11 @@ async def create_payment_session(
         return {"status": "SUCCEEDED"}
 
     provider = get_payment_provider()
+    if isinstance(provider, LocalTestPaymentProvider) and not local_test_payments_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Paiement en ligne indisponible : Stripe Test n'est pas configuré",
+        )
     result = await provider.create_test_payment(booking.id, booking.deposit_amount)
 
     payment = booking.payment or models.Payment(
@@ -1336,7 +1347,8 @@ async def create_payment_session(
     )
     payment.provider_reference = result.get("provider_reference")
     payment.status = "CREATED"
-    payment.provider = "STRIPE_TEST"
+    payment.provider = ("LOCAL_TEST" if result.get("mode") == "local-test"
+                        else "STRIPE_TEST")
 
     db.add(payment)
     db.commit()
@@ -1359,8 +1371,17 @@ def confirm_local_test_payment(
     if not booking or (booking.user_id != user.id and user.role != "ADMIN"):
         raise HTTPException(status_code=404, detail="Réservation introuvable")
 
+    if not local_test_payments_enabled():
+        raise HTTPException(
+            status_code=403, detail="Confirmation de paiement simulé interdite en ligne",
+        )
     if not booking.payment:
         raise HTTPException(status_code=400, detail="Session de paiement absente")
+    if (booking.payment.provider != "LOCAL_TEST" or
+            not (booking.payment.provider_reference or "").startswith("local_test_")):
+        raise HTTPException(
+            status_code=400, detail="La réservation ne possède pas de paiement local de test",
+        )
 
     booking.payment.status = "SUCCEEDED"
     booking.status = "CONFIRMED"
@@ -1728,6 +1749,40 @@ async def confirm_stripe_payment(
         """
     )
 
+def send_newsletter_confirmation(email: str, url: str) -> None:
+    """Send a one-time link without returning it to the public API caller."""
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_from = os.getenv("SMTP_FROM", "").strip()
+    if not smtp_host or not smtp_from:
+        raise HTTPException(
+            status_code=503,
+            detail="Newsletter momentanément indisponible : envoi e-mail non configuré",
+        )
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+    message = EmailMessage()
+    message["From"] = smtp_from
+    message["To"] = email
+    message["Subject"] = "Confirmez votre inscription à MecaConnect"
+    message.set_content(
+        "Pour confirmer votre inscription à la newsletter MecaConnect, ouvrez ce lien :\n"
+        + url + "\nSi vous n'avez rien demandé, ignorez ce message.\n"
+    )
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=12) as smtp:
+            smtp.starttls()
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+    except Exception as exc:
+        logger.exception("Échec d'envoi de confirmation newsletter")
+        raise HTTPException(
+            status_code=503,
+            detail="E-mail de confirmation indisponible, veuillez réessayer plus tard",
+        ) from exc
+
+
 @app.post("/api/newsletter/request", status_code=201)
 def newsletter_request(
     payload: schemas.NewsletterIn,
@@ -1739,22 +1794,28 @@ def newsletter_request(
             models.NewsletterSubscription.email == email
         )
     )
-
     if subscription and subscription.confirmed:
         return {"status": "already_confirmed"}
 
     token = secrets.token_urlsafe(24)
+    confirmation_path = f"/api/newsletter/confirm/{token}"
+    local_demo = local_test_payments_enabled()
+    if not local_demo:
+        # Fail closed: never return a confirmation token to the API caller
+        # and require a working delivery service on public deployments.
+        send_newsletter_confirmation(
+            email, f"{APP_BASE_URL}{confirmation_path}",
+        )
     if subscription:
         subscription.token = token
     else:
         db.add(models.NewsletterSubscription(email=email, token=token))
-
     db.commit()
-    return {
-        "status": "confirmation_required",
-        # En production, ce lien serait envoyé par e-mail.
-        "confirmation_path": f"/api/newsletter/confirm/{token}",
-    }
+    response = {"status": "confirmation_required"}
+    if local_demo:
+        # Local pedagogical demonstration only.
+        response["confirmation_path"] = confirmation_path
+    return response
 
 
 @app.get("/api/newsletter/confirm/{token}")

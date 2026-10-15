@@ -678,6 +678,10 @@ def test_pending_garage_claim_only_admin_can_approve(client, monkeypatch):
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == "CLAIMED_PARTNER"
+    # Une nouvelle fiche jusque-là invisible devient publique après approbation.
+    visible = client.get(f"/api/garages/{garage_id}")
+    assert visible.status_code == 200
+    assert visible.json()["listing_status"] == "CLAIMED_PARTNER"
     client.post("/api/auth/logout")
     response = client.post(
         "/api/auth/login",
@@ -688,3 +692,75 @@ def test_pending_garage_claim_only_admin_can_approve(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["user"]["role"] == "GARAGE"
+
+
+def test_public_deployment_rejects_simulated_payment(client, monkeypatch):
+    client.post('/api/auth/register', json={
+        'email': 'no-fake-public-payments@example.com',
+        'password': 'StrongTestPayment-2026!', 'full_name': 'No Fake Payments',
+    })
+    _, service_id, slot_id = demo_booking_data()
+    booking = client.post('/api/bookings', json={
+        'service_id': service_id, 'slot_id': slot_id,
+    })
+    assert booking.status_code == 201
+    booking_id = booking.json()['id']
+    monkeypatch.setenv('RAILWAY_ENVIRONMENT', 'production')
+    monkeypatch.setenv('APP_BASE_URL', 'https://mecaconnect.example')
+    assert client.post(f'/api/payments/{booking_id}/session').status_code == 503
+    assert client.post(f'/api/payments/test/{booking_id}/confirm').status_code == 403
+
+
+def test_local_test_confirmation_cannot_validate_a_stripe_payment(client):
+    from app.models import Payment
+    client.post('/api/auth/register', json={
+        'email': 'not-stripe-by-click@example.com',
+        'password': 'StrongTestPayment-2026!', 'full_name': 'No Stripe Bypass',
+    })
+    _, service_id, slot_id = demo_booking_data()
+    booking = client.post('/api/bookings', json={
+        'service_id': service_id, 'slot_id': slot_id,
+    })
+    assert booking.status_code == 201
+    booking_id = booking.json()['id']
+    payment = client.post(f'/api/payments/{booking_id}/session')
+    assert payment.status_code == 200
+    with SessionLocal() as db:
+        record = db.get(Payment, payment.json()['payment_id'])
+        assert record.provider == 'LOCAL_TEST'
+        record.provider = 'STRIPE_TEST'
+        record.provider_reference = 'cs_test_not_paid'
+        db.commit()
+    forged = client.post(f'/api/payments/test/{booking_id}/confirm')
+    assert forged.status_code == 400
+
+
+
+def test_public_newsletter_does_not_leak_confirmation_token(client, monkeypatch):
+    import app.main as app_main
+    captured = {}
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_BASE_URL", "https://example.invalid")
+    monkeypatch.setattr(app_main, "send_newsletter_confirmation",
+                        lambda email, url: captured.update(email=email, url=url))
+    response = client.post(
+        "/api/newsletter/request",
+        json={"email": "public-confirm@example.com"},
+    )
+    assert response.status_code == 201
+    assert response.json() == {"status": "confirmation_required"}
+    assert captured["email"] == "public-confirm@example.com"
+    assert "/api/newsletter/confirm/" in captured["url"]
+    assert captured["url"] not in response.text
+
+
+def test_public_newsletter_without_mailer_rejects_subscription(client, monkeypatch):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    monkeypatch.delenv("SMTP_FROM", raising=False)
+    r = client.post(
+        "/api/newsletter/request",
+        json={"email": "no-smtp@example.com"},
+    )
+    assert r.status_code == 503
+    assert "confirmation_path" not in r.text
