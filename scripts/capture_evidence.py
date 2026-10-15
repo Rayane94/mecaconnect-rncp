@@ -91,6 +91,14 @@ async def main():
                 except Exception:await page.context.clear_cookies()
             except Exception as e:
                 notes.setdefault("local_role_screens",[]).append({"role":prefix,"error":str(e)[:200]})
+        # Separate evidence: full public professional registration form.
+        try:
+            await prodpage.goto(PROD+"/professionnels",wait_until="domcontentloaded",timeout=16000)
+            await prodpage.wait_for_timeout(1200)
+            await prodpage.screenshot(path=str(OUT/"20-production-inscription-professionnelle-full.png"),full_page=True)
+            notes["production_professional_full"] = True
+        except Exception as exc:
+            notes["production_professional_full_error"] = str(exc)[:300]
         # Separate authenticated browser contexts avoid stale route or logout state.
         for role,email,password,route in [
             ("16-local-admin","admin@mecaconnect.example.com","CI-Admin-Only-DoNotReuse-2026!","/admin"),
