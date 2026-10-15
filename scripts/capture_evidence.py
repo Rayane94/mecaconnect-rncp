@@ -41,6 +41,57 @@ async def main():
             res=await page.goto(PROD+"/api/health",wait_until="domcontentloaded",timeout=13000)
             notes["production_health"]={"http":res.status if res else None,"body":(await page.locator("body").inner_text())[:400]}
         except Exception as e:notes["production_health"]={"unverified":str(e)[:320]}
+        # Public production UI, independent of local test environment.
+        notes["production_screens"]=[]
+        prodpage=await browser.new_page(viewport={"width":1440,"height":980},device_scale_factor=1)
+        for name,route in [
+            ("10-production-accueil.png","/"),
+            ("11-production-cookies.png","/"),
+            ("12-production-garages.png","/garages"),
+            ("13-production-mecabot.png","/mecabot"),
+            ("14-production-professionnels.png","/professionnels"),
+            ("15-production-confidentialite.png","/confidentialite"),
+        ]:
+            try:
+                if name.endswith("cookies.png"):
+                    await prodpage.goto(PROD+"/",wait_until="domcontentloaded",timeout=18000)
+                    await prodpage.evaluate("localStorage.removeItem('mc-consent')")
+                response=await prodpage.goto(PROD+route,wait_until="domcontentloaded",timeout=18000)
+                await prodpage.wait_for_timeout(1900)
+                if not name.endswith("cookies.png"):
+                    btn=prodpage.locator("#cookies-refuse")
+                    if await btn.is_visible(timeout=900):await btn.click()
+                await prodpage.screenshot(path=str(OUT/name),full_page=False)
+                notes["production_screens"].append({"file":name,"route":route,"http":response.status if response else None,"title":await prodpage.title()})
+            except Exception as e:notes["production_screens"].append({"file":name,"error":str(e)[:300]})
+        # Local-only demonstrations with disposable seeded accounts. Never attempt
+        # access to real production accounts during evidence capture.
+        for prefix,email,password,route in [
+            ("08-local-garage","garage@mecaconnect.example.com","CI-Garage-Only-DoNotReuse-2026!","/espace-garage"),
+            ("09-local-admin","admin@mecaconnect.example.com","CI-Admin-Only-DoNotReuse-2026!","/admin"),
+        ]:
+            try:
+                await page.goto(URL+"/connexion",wait_until="domcontentloaded",timeout=15000)
+                await page.wait_for_timeout(500)
+                await page.locator("#login-email").fill(email)
+                await page.locator("#login-password").fill(password)
+                await page.locator("#login-form button[type=submit]").click()
+                await page.wait_for_timeout(1500)
+                await page.goto(URL+route,wait_until="domcontentloaded",timeout=15000)
+                await page.wait_for_timeout(1200)
+                await page.screenshot(path=str(OUT/(prefix+"-dashboard.png")),full_page=False)
+                if prefix.endswith("garage"):
+                    for tab in ["services","slots","bookings"]:
+                        button=page.locator("[data-dashboard-tab="+tab+"]")
+                        if await button.count():
+                            await button.click()
+                            await page.wait_for_timeout(350)
+                            await page.screenshot(path=str(OUT/(prefix+"-"+tab+".png")),full_page=False)
+                notes.setdefault("local_role_screens",[]).append({"role":prefix,"ok":True})
+                try:await page.locator("#logout").click(timeout=2000)
+                except Exception:await page.context.clear_cookies()
+            except Exception as e:
+                notes.setdefault("local_role_screens",[]).append({"role":prefix,"error":str(e)[:200]})
         await browser.close()
     (OUT/"manifest.json").write_text(json.dumps(notes,indent=2,ensure_ascii=False),encoding="utf8")
 asyncio.run(main())
