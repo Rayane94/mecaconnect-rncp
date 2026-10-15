@@ -678,6 +678,10 @@ def test_pending_garage_claim_only_admin_can_approve(client, monkeypatch):
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == "CLAIMED_PARTNER"
+    # Une nouvelle fiche jusque-là invisible devient publique après approbation.
+    visible = client.get(f"/api/garages/{garage_id}")
+    assert visible.status_code == 200
+    assert visible.json()["listing_status"] == "CLAIMED_PARTNER"
     client.post("/api/auth/logout")
     response = client.post(
         "/api/auth/login",
