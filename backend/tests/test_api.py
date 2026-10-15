@@ -688,3 +688,44 @@ def test_pending_garage_claim_only_admin_can_approve(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["user"]["role"] == "GARAGE"
+
+
+def test_public_deployment_rejects_simulated_payment(client, monkeypatch):
+    client.post('/api/auth/register', json={
+        'email': 'no-fake-public-payments@example.com',
+        'password': 'StrongTestPayment-2026!', 'full_name': 'No Fake Payments',
+    })
+    _, service_id, slot_id = demo_booking_data()
+    booking = client.post('/api/bookings', json={
+        'service_id': service_id, 'slot_id': slot_id,
+    })
+    assert booking.status_code == 201
+    booking_id = booking.json()['id']
+    monkeypatch.setenv('RAILWAY_ENVIRONMENT', 'production')
+    monkeypatch.setenv('APP_BASE_URL', 'https://mecaconnect.example')
+    assert client.post(f'/api/payments/{booking_id}/session').status_code == 503
+    assert client.post(f'/api/payments/test/{booking_id}/confirm').status_code == 403
+
+
+def test_local_test_confirmation_cannot_validate_a_stripe_payment(client):
+    from app.models import Payment
+    client.post('/api/auth/register', json={
+        'email': 'not-stripe-by-click@example.com',
+        'password': 'StrongTestPayment-2026!', 'full_name': 'No Stripe Bypass',
+    })
+    _, service_id, slot_id = demo_booking_data()
+    booking = client.post('/api/bookings', json={
+        'service_id': service_id, 'slot_id': slot_id,
+    })
+    assert booking.status_code == 201
+    booking_id = booking.json()['id']
+    payment = client.post(f'/api/payments/{booking_id}/session')
+    assert payment.status_code == 200
+    with SessionLocal() as db:
+        record = db.get(Payment, payment.json()['payment_id'])
+        assert record.provider == 'LOCAL_TEST'
+        record.provider = 'STRIPE_TEST'
+        record.provider_reference = 'cs_test_not_paid'
+        db.commit()
+    forged = client.post(f'/api/payments/test/{booking_id}/confirm')
+    assert forged.status_code == 400
