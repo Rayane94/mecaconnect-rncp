@@ -28,13 +28,14 @@
 - Réservation + paiement Stripe Test ou simulation strictement locale.
 - Régression : refus HTTP 503 de paiement simulé lorsque l'environnement public n'a pas de fournisseur Stripe configuré.
 - Régression : refus HTTP 403 de la confirmation simulée en production ; une session Stripe ne doit pas pouvoir être validée par la route de confirmation locale.
+- Régression : aucun jeton de newsletter dans la réponse publique ; un serveur SMTP est nécessaire pour l'envoi du lien.
 - Prévention de la double réservation.
 - Double opt-in newsletter : lien local uniquement pour tests et refus de divulgation sur serveur public ; confirmation par e-mail SMTP requise.
 - RBAC administrateur.
 - Export RGPD.
 - Hachage mot de passe, JWT et TOTP.
 
-État vérifié en CI sur la branche de corrections : 74 tests back-end réussis (couverture globale 87 %) et 19 tests front-end réussis. Les valeurs ne prouvent pas, à elles seules, le déploiement du commit en production.
+État vérifié en CI sur la branche de corrections : 76 tests back-end réussis (couverture globale 86 %) et 19 tests front-end réussis. Les valeurs ne prouvent pas, à elles seules, le déploiement du commit en production.
 
 Objectif de couverture : >= 50 % conformément à C18 et C25, cible interne >= 70 %. Les nombres de tests et la couverture sont actualisés à partir de la dernière exécution complète avant livraison, sans réutiliser les anciens rapports comme preuve d'une version plus récente.
 
