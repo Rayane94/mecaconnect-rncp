@@ -68,7 +68,6 @@ async def main():
         # access to real production accounts during evidence capture.
         for prefix,email,password,route in [
             ("08-local-garage","garage@mecaconnect.example.com","CI-Garage-Only-DoNotReuse-2026!","/espace-garage"),
-            ("09-local-admin","admin@mecaconnect.example.com","CI-Admin-Only-DoNotReuse-2026!","/admin"),
         ]:
             try:
                 await page.goto(URL+"/connexion",wait_until="domcontentloaded",timeout=15000)
@@ -92,6 +91,38 @@ async def main():
                 except Exception:await page.context.clear_cookies()
             except Exception as e:
                 notes.setdefault("local_role_screens",[]).append({"role":prefix,"error":str(e)[:200]})
+        # Separate authenticated browser contexts avoid stale route or logout state.
+        for role,email,password,route in [
+            ("16-local-admin","admin@mecaconnect.example.com","CI-Admin-Only-DoNotReuse-2026!","/admin"),
+            ("17-local-garage","garage@mecaconnect.example.com","CI-Garage-Only-DoNotReuse-2026!","/espace-garage"),
+        ]:
+            ctx=await browser.new_context(viewport={"width":1440,"height":980})
+            await ctx.add_init_script("localStorage.setItem('mc-consent','necessary')")
+            try:
+                resp=await ctx.request.post(URL+"/api/auth/login",data={"email":email,"password":password})
+                page_role=await ctx.new_page()
+                await page_role.goto(URL+route,wait_until="domcontentloaded",timeout=20000)
+                await page_role.wait_for_timeout(1200)
+                await page_role.screenshot(path=str(OUT/(role+"-dashboard.png")),full_page=False)
+                notes.setdefault("isolated_role_screens",[]).append({"role":role,"login_http":resp.status})
+            except Exception as e:notes.setdefault("isolated_role_screens",[]).append({"role":role,"error":str(e)[:240]})
+            await ctx.close()
+        try:
+            await prodpage.goto(PROD+"/garages",wait_until="domcontentloaded",timeout=15000)
+            await prodpage.wait_for_timeout(1200)
+            el=prodpage.locator('#garage-grid a[href^="/garages/"]').first
+            href=await el.get_attribute("href",timeout=4000)
+            await prodpage.goto(PROD+href,wait_until="domcontentloaded",timeout=15000)
+            await prodpage.wait_for_timeout(950)
+            await prodpage.screenshot(path=str(OUT/"18-production-fiche-garage.png"),full_page=False)
+            notes["detail_href"]=href
+        except Exception as e:notes["detail_error"]=str(e)[:300]
+        try:
+            response=await prodpage.goto(PROD+"/api/docs",wait_until="domcontentloaded",timeout=14000)
+            await prodpage.wait_for_timeout(1100)
+            await prodpage.screenshot(path=str(OUT/"19-production-swagger-api.png"),full_page=False)
+            notes["swagger_status"]=response.status if response else None
+        except Exception as e:notes["swagger_error"]=str(e)[:300]
         await browser.close()
     (OUT/"manifest.json").write_text(json.dumps(notes,indent=2,ensure_ascii=False),encoding="utf8")
 asyncio.run(main())
