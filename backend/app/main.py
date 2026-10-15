@@ -523,6 +523,7 @@ def approve_garage_claim(
     # la qualité du représentant. Un SIRET public, seul, n'est JAMAIS une preuve.
     claimant.role = "GARAGE"
     garage.listing_status = "CLAIMED_PARTNER"
+    garage.is_public = True  # Une nouvelle fiche approuvée devient consultable publiquement.
     garage.booking_enabled = True
     garage.payment_online_enabled = False
     db.commit()
