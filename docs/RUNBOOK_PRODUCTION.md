@@ -32,4 +32,6 @@ Le workflow .github/workflows/uptime.yml vérifie l'API publique chaque heure ap
 6. Tester périodiquement la restauration des sauvegardes PostgreSQL.
 
 ## Limites à déclarer
-L'état actuel de Railway, le certificat HTTPS, les alertes et le dernier SHA déployé n'ont pas été vérifiés à distance dans cette intervention. Les captures anciennes du mémoire sont historiques.
+Une vérification automatisée par navigateur Chromium depuis GitHub Actions a confirmé l'accès HTTP 200 au site public Railway, au chemin `/api/health` et à la documentation Swagger. Des captures datées existent dans l'artefact GitHub Actions `mecaconnect-current-evidence`. En revanche, le SHA effectivement actif sur Railway, le statut administratif du certificat TLS, les alertes réellement reçues, la supervision indépendante et les restaurations PostgreSQL n'ont pas été vérifiés. Les captures publiées sont des observations ponctuelles, pas une garantie de disponibilité continue.
+
+La sécurité des paiements simulés est renforcée **dans la branche de correction uniquement** : confirmation strictement locale et refus des faux succès publics. Tant qu'elle n'est pas fusionnée puis déployée et recettée, l'ancienne version peut rester en ligne. L'expédition de confirmation de newsletter reste un chantier nécessaire avant la commercialisation.
