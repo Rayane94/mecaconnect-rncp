@@ -29,7 +29,7 @@
 - Régression : refus HTTP 503 de paiement simulé lorsque l'environnement public n'a pas de fournisseur Stripe configuré.
 - Régression : refus HTTP 403 de la confirmation simulée en production ; une session Stripe ne doit pas pouvoir être validée par la route de confirmation locale.
 - Prévention de la double réservation.
-- Double opt-in newsletter.
+- Double opt-in newsletter : lien local uniquement pour tests et refus de divulgation sur serveur public ; confirmation par e-mail SMTP requise.
 - RBAC administrateur.
 - Export RGPD.
 - Hachage mot de passe, JWT et TOTP.
