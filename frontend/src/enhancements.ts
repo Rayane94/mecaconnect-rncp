@@ -566,7 +566,8 @@ window.addEventListener("load", () => {
   setupPasswordErrors();
   setupClientRegisterGuard();
   setupProRegistration();
-  setupLiveDemoRegistration();
+  // La création fictive ne se présente plus comme un choix public concurrent.
+  // L'atelier de démonstration réservable figure directement au catalogue.
   setupRescheduleDialog();
   setupBookingOverride();
   refreshDynamicEnhancements();
