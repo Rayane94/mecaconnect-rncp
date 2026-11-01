@@ -531,8 +531,8 @@ async function setupLiveDemoRegistration() {
       await mcApi("/api/auth/register-demo-garage", {
         method: "POST", body: JSON.stringify(data),
       });
-      document.getElementById("demo-live-result").textContent = "Compte de test créé. Ouverture de l’espace garage...";
-      window.location.href = "/espace-garage";
+      document.getElementById("demo-live-result").textContent = "Demande fictive créée. Présentez maintenant la validation dans l’espace administrateur.";
+      window.location.href = "/mon-espace";
     } catch (error) {
       const result = document.getElementById("demo-live-result");
       result.textContent = error.message || "Création impossible";
