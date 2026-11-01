@@ -534,6 +534,107 @@ def approve_garage_claim(
     return {"garage_id": garage.id, "status": "CLAIMED_PARTNER", "booking_enabled": True}
 
 
+@app.get("/api/admin/garages")
+def admin_list_garages(
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Vue complète, y compris les fiches masquées et archivées."""
+    garages = db.scalars(select(models.Garage).order_by(models.Garage.name)).all()
+    result = []
+    for garage in garages:
+        owner = db.get(models.User, garage.owner_id) if garage.owner_id else None
+        result.append({
+            "id": garage.id,
+            "name": garage.name,
+            "city": garage.city,
+            "siret": garage.siret,
+            "owner_email": owner.email if owner else None,
+            "owner_role": owner.role if owner else None,
+            "listing_status": garage.listing_status,
+            "is_public": bool(garage.is_public),
+            "booking_enabled": bool(garage.booking_enabled),
+            "services": len(garage.services),
+            "bookings": db.scalar(
+                select(func.count(models.Booking.id))
+                .join(models.Service)
+                .where(models.Service.garage_id == garage.id)
+            ) or 0,
+        })
+    return result
+
+
+@app.post("/api/admin/garage-claims/{garage_id}/reject")
+def admin_reject_garage_claim(
+    garage_id: int,
+    payload: schemas.RejectGarageClaimIn,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or garage.listing_status != "PENDING_VERIFICATION" or not garage.owner_id:
+        raise HTTPException(status_code=404, detail="Demande de rattachement introuvable")
+    claimant = db.get(models.User, garage.owner_id)
+    if claimant and claimant.role == "GARAGE_PENDING":
+        claimant.role = "USER"
+    garage.owner_id = None
+    # Une fiche du catalogue public conserve sa présence, sans aucun droit de gestion.
+    garage.listing_status = "PUBLIC_REFERENCE" if garage.source_url else "REJECTED"
+    garage.is_public = bool(garage.source_url)
+    garage.booking_enabled = False
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(
+        db, admin.id, "REJECT_GARAGE_CLAIM", "garage",
+        f"id={garage.id};reason={payload.reason[:160]}",
+    )
+    return {"garage_id": garage.id, "status": garage.listing_status}
+
+
+@app.delete("/api/admin/garages/{garage_id}")
+def admin_archive_garage(
+    garage_id: int,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Archivage réversible sans casser les réservations, paiements et audits."""
+    garage = db.get(models.Garage, garage_id)
+    if not garage:
+        raise HTTPException(status_code=404, detail="Garage introuvable")
+    if garage.listing_status == "PENDING_VERIFICATION":
+        raise HTTPException(status_code=409, detail="Traitez d'abord la demande de rattachement")
+    if garage.slug == "atelier-demo-mecaconnect":
+        raise HTTPException(status_code=409, detail="L'atelier démo est piloté par la configuration de test")
+    garage.listing_status = "ARCHIVED"
+    garage.is_public = False
+    garage.booking_enabled = False
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(db, admin.id, "ARCHIVE_GARAGE", "garage", str(garage.id))
+    return {"garage_id": garage.id, "status": "ARCHIVED"}
+
+
+@app.post("/api/admin/garages/{garage_id}/restore")
+def admin_restore_garage(
+    garage_id: int,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or garage.listing_status != "ARCHIVED":
+        raise HTTPException(status_code=404, detail="Garage archivé introuvable")
+    owner = db.get(models.User, garage.owner_id) if garage.owner_id else None
+    partner = bool(owner and owner.role == "GARAGE")
+    garage.listing_status = "CLAIMED_PARTNER" if partner else "PUBLIC_REFERENCE"
+    garage.is_public = True
+    garage.booking_enabled = partner
+    # Par prudence, l'acompte reste désactivé après une restauration.
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(db, admin.id, "RESTORE_GARAGE", "garage", str(garage.id))
+    return {"garage_id": garage.id, "status": garage.listing_status}
+
+
 @app.post("/api/auth/login")
 def login(
     payload: schemas.LoginIn,
