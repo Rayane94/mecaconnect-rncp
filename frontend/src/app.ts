@@ -1225,144 +1225,256 @@ async function loadGarageDashboard(activeTab = "overview"): Promise<void> {
 }
 
 async function loadAdminDashboard(): Promise<void> {
-  const [stats, data] = await Promise.all([
-    api<any>("/api/admin/stats"),
-    api<any>("/api/garage/dashboard"),
-  ]);
-
   const content = element<HTMLDivElement>("dashboard-content");
-  content.innerHTML = `
-    <div class="dashboard-shell admin-dashboard-shell">
-    <div class="admin-intro panel">
-      <div><span class="admin-kicker">SUPERVISION DE LA PLATEFORME</span><h3>Vue d'ensemble MecaConnect</h3><p>Suivez les comptes, les garages partenaires, les réservations et les paiements depuis cet espace sécurisé.</p></div>
-      <a class="btn secondary" href="/api/docs">Ouvrir Swagger</a>
-    </div>
-    <div class="stats-grid">
-      <article><strong>${stats.users}</strong><span>utilisateurs</span></article>
-      <article><strong>${stats.garages}</strong><span>garages</span></article>
-      <article><strong>${stats.bookings}</strong><span>réservations</span></article>
-      <article><strong>${stats.payments_succeeded}</strong><span>paiements réussis</span></article>
-      <article><strong>${stats.analytics_events}</strong><span>événements analytics consentis</span></article>
-    </div>
-    <div class="dashboard-grid admin-grid">
-      <article class="panel">
-        <div class="panel-heading"><div><span class="panel-label">RÉSEAU</span><h3>Garages suivis</h3></div><span>${data.garages.length} établissement(s)</span></div>
-        <div class="admin-list">${data.garages.length
-          ? data.garages.map((garage: any) => `<div class="admin-row"><div><strong>${safeText(garage.name)}</strong><small>${safeText(garage.city)} · ${garage.services} prestation(s)</small></div><span class="status-pill ${garage.verified ? "verified" : "pending"}">${garage.verified ? "Vérifié" : "À contrôler"}</span></div>`).join("")
-          : "<p>Aucun garage enregistré.</p>"}</div>
-      </article>
-      <article class="panel">
-        <div class="panel-heading"><div><span class="panel-label">ACTIVITÉ</span><h3>Réservations récentes</h3></div><span>${data.bookings.length} affichée(s)</span></div>
-        <div class="admin-list">${data.bookings.length
-          ? data.bookings.slice(0, 10).map((booking: any) => `<div class="admin-row"><div><strong>#${booking.id} · ${safeText(booking.service)}</strong><small>${safeText(booking.garage)} · ${new Date(booking.starts_at).toLocaleString("fr-FR")}</small></div><span class="status-pill">${safeText(booking.status)}</span></div>`).join("")
-          : "<p>Aucune réservation récente.</p>"}</div>
-      </article>
-    </div>
-    </div>
-  `;
+  content.innerHTML = '<section class="panel"><h3>Chargement de l’administration…</h3></section>';
+  try {
+    // Read ALL management data up front: failure cannot silently hide the buttons
+    // below a long read-only list of indexed public garages.
+    const [stats, data, claims, garages] = await Promise.all([
+      api<any>("/api/admin/stats"),
+      api<any>("/api/garage/dashboard"),
+      api<any[]>("/api/admin/garage-claims"),
+      api<any[]>("/api/admin/garages"),
+    ]);
 
-  const [claims, managedGarages] = await Promise.all([
-    api<any[]>("/api/admin/garage-claims"),
-    api<any[]>("/api/admin/garages"),
-  ]);
-  const reviewPanel = document.createElement("section");
-  reviewPanel.className = "panel";
-  reviewPanel.innerHTML = '<div class="panel-heading"><h3>Demandes de rattachement · ' + claims.length + '</h3></div>' +
-    '<p>Un SIRET prouve l existence de l établissement, jamais l identité du représentant. Approuvez uniquement après un contrôle externe traçable.</p>';
-  const claimList = document.createElement("div");
-  claimList.className = "admin-list";
-  for (const claim of claims) {
-    const item = document.createElement("div");
-    item.className = "admin-row";
-    item.style.flexWrap = "wrap";
-    const info = document.createElement("div");
-    info.innerHTML = "<strong>" + safeText(claim.name) + "</strong><small>" +
-      safeText(claim.claimant_email) + (claim.is_demo ? " · ATELIER FICTIF SANS SIRET" : " · SIRET " + safeText(claim.siret)) +
-      "</small><small>" + (claim.is_demo ? "Simulation de validation administrateur" : safeText(claim.legal_name)) + "</small>";
-    const form = document.createElement("form");
-    form.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap";
-    form.innerHTML =
-      '<label>' + (claim.is_demo ? 'Type de validation' : 'Preuve vérifiée') + '<select name="proof_type">' +
-      (claim.is_demo
-        ? '<option value="simulation_soutenance">Scénario fictif de soutenance — aucune entreprise réelle</option>'
-        : '<option value="mandat">Mandat</option>' +
-          '<option value="contact_independant">Contact direct du garage</option>' +
-          '<option value="justificatif_professionnel">Justificatif professionnel</option>') +
-      '</select></label>' +
-      '<label>Référence du contrôle<input name="proof_reference" required minlength="5" maxlength="200" placeholder="Date, référence, document"></label>' +
-      '<button type="submit" class="btn small">Valider</button>' +
-      '<button type="button" class="btn secondary small" data-reject>Refuser</button>';
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const proof_type = (form.elements.namedItem("proof_type") as HTMLSelectElement).value;
-      const proof_reference = (form.elements.namedItem("proof_reference") as HTMLInputElement).value.trim();
-      if (!window.confirm(claim.is_demo
-        ? "Valider cet atelier EXCLUSIVEMENT FICTIF pour la soutenance RNCP ?"
-        : "Avez-vous réellement contrôlé que le demandeur représente cet établissement ?")) return;
-      try {
-        await api("/api/admin/garage-claims/" + claim.garage_id + "/approve", {
-          method: "POST", body: JSON.stringify({ proof_type, proof_reference }),
-        });
-        showMessage("Garage approuvé, décision tracée.", "success");
-        await loadAdminDashboard();
-      } catch (error) { showMessage((error as Error).message, "error"); }
-    });
-    form.querySelector<HTMLButtonElement>("[data-reject]")?.addEventListener("click", async () => {
-      const reason = window.prompt("Motif du refus (10 caractères minimum) :");
-      if (!reason || reason.trim().length < 10) return;
-      try {
-        await api("/api/admin/garage-claims/" + claim.garage_id + "/reject", {
-          method: "POST", body: JSON.stringify({reason: reason.trim()}),
-        });
-        showMessage("Demande refusée.", "success");
-        await loadAdminDashboard();
-      } catch (error) { showMessage((error as Error).message, "error"); }
-    });
-    item.append(info, form);
-    claimList.append(item);
-  }
-  if (!claims.length) claimList.innerHTML = "<p>Aucune demande en attente.</p>";
-  reviewPanel.append(claimList);
+    const root = document.createElement("div");
+    root.className = "dashboard-shell admin-dashboard-shell";
+    root.innerHTML =
+      '<div class="admin-intro panel">' +
+        '<div><span class="admin-kicker">ADMINISTRATION MECACONNECT</span>' +
+        '<h3>Contrôle et validation des garages</h3>' +
+        '<p>Les demandes à traiter et les actions de gestion sont accessibles directement ici.</p></div>' +
+        '<a class="btn secondary" href="/api/docs">API Swagger</a>' +
+      '</div>' +
+      '<nav class="workspace-tabs" aria-label="Navigation administration">' +
+        '<a class="btn secondary small" href="#admin-claims">Demandes (' + claims.length + ')</a>' +
+        '<a class="btn secondary small" href="#admin-garages">Gérer les garages (' + garages.length + ')</a>' +
+        '<a class="btn secondary small" href="#admin-activity">Activité</a>' +
+      '</nav>';
 
-  const garagesPanel = document.createElement("section");
-  garagesPanel.className = "panel";
-  garagesPanel.innerHTML = '<div class="panel-heading"><h3>Gérer les garages · ' + managedGarages.length + '</h3></div>' +
-    "<p>Archivage réversible : la fiche disparaît du catalogue, les réservations historiques sont conservées.</p>";
-  const garagesList = document.createElement("div");
-  garagesList.className = "admin-list";
-  for (const garage of managedGarages) {
-    const item = document.createElement("div");
-    item.className = "admin-row";
-    item.style.flexWrap = "wrap";
-    const info = document.createElement("div");
-    info.innerHTML = "<strong>" + safeText(garage.name) + "</strong><small>" +
-      safeText(garage.city) + " · " + safeText(garage.listing_status) +
-      " · " + garage.services + " prestations · " + garage.bookings + " réservations</small>" +
-      "<small>" + safeText(garage.owner_email || "Aucun gestionnaire") + "</small>";
-    item.append(info);
-    if (garage.listing_status === "ARCHIVED" || (garage.listing_status !== "PENDING_VERIFICATION" && garage.listing_status !== "DEMO_HIDDEN" && garage.listing_status !== "DEMO_PUBLIC")) {
-      const restore = garage.listing_status === "ARCHIVED";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "btn secondary small";
-      button.textContent = restore ? "Restaurer" : "Archiver";
-      button.addEventListener("click", async () => {
-        if (!window.confirm(restore ? "Restaurer le garage ?" : "Archiver ce garage sans supprimer ses réservations ?")) return;
+    const claimPanel = document.createElement("section");
+    claimPanel.className = "panel";
+    claimPanel.id = "admin-claims";
+    claimPanel.innerHTML =
+      '<div class="panel-heading"><div><span class="panel-label">PRIORITÉ ADMINISTRATEUR</span>' +
+      '<h3>Demandes de rattachement à valider</h3></div>' +
+      '<span class="status-pill pending">' + claims.length + ' en attente</span></div>' +
+      '<p>Un SIRET identifie une entreprise, pas son représentant. Pour une vraie entreprise, vérifiez une preuve indépendante. Les demandes fictives RNCP sont signalées distinctement.</p>';
+    const claimList = document.createElement("div");
+    claimList.className = "admin-list";
+    if (!claims.length) {
+      claimList.innerHTML = '<p>Aucune demande à valider pour le moment. Une inscription professionnelle en attente apparaîtra ici.</p>';
+    }
+    for (const claim of claims) {
+      const item = document.createElement("div");
+      item.className = "admin-row";
+      item.style.cssText = "align-items:flex-start;flex-wrap:wrap;gap:12px";
+      const info = document.createElement("div");
+      info.innerHTML =
+        '<strong>' + safeText(claim.name) + '</strong>' +
+        '<small>' + safeText(claim.claimant_email) + '</small>' +
+        '<small>' + (claim.is_demo ? 'ATELIER FICTIF DE SOUTENANCE, SANS SIRET' :
+          'SIRET ' + safeText(claim.siret || "non disponible") + ' — ' + safeText(claim.legal_name || "")) + '</small>';
+      const form = document.createElement("form");
+      form.className = "management-form";
+      form.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap";
+      const proofLabel = document.createElement("label");
+      proofLabel.textContent = claim.is_demo ? "Validation de test" : "Preuve vérifiée";
+      const select = document.createElement("select");
+      select.name = "proof_type";
+      const types = claim.is_demo
+        ? [["simulation_soutenance", "Atelier fictif RNCP, sans entreprise réelle"]]
+        : [["mandat", "Mandat du représentant"], ["contact_independant", "Contact indépendant de l’établissement"], ["justificatif_professionnel", "Justificatif professionnel"]];
+      for (const [value, label] of types) {
+        const opt = document.createElement("option");
+        opt.value = value; opt.textContent = label; select.append(opt);
+      }
+      proofLabel.append(select);
+      const refLabel = document.createElement("label");
+      refLabel.textContent = claim.is_demo ? "Référence du test" : "Référence du contrôle";
+      const refInput = document.createElement("input");
+      refInput.name = "proof_reference";
+      refInput.required = true;
+      refInput.minLength = 5;
+      refInput.maxLength = 200;
+      refInput.placeholder = claim.is_demo ? "DEMO-RNCP-2026" : "Date et justificatif vérifié";
+      refLabel.append(refInput);
+      const approve = document.createElement("button");
+      approve.className = "btn small"; approve.type = "submit"; approve.textContent = "Valider";
+      const reject = document.createElement("button");
+      reject.className = "btn secondary small"; reject.type = "button"; reject.textContent = "Refuser";
+      form.append(proofLabel, refLabel, approve, reject);
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const question = claim.is_demo
+          ? "Approuver cet atelier EXCLUSIVEMENT FICTIF pour la soutenance ?"
+          : "Avez-vous vérifié un justificatif établissant le droit de gérer CET établissement réel ?";
+        if (!window.confirm(question)) return;
         try {
-          await api("/api/admin/garages/" + garage.id + (restore ? "/restore" : ""), {
-            method: restore ? "POST" : "DELETE",
+          await api("/api/admin/garage-claims/" + Number(claim.garage_id) + "/approve", {
+            method: "POST",
+            body: JSON.stringify({proof_type: select.value, proof_reference: refInput.value.trim()}),
           });
-          showMessage(restore ? "Garage restauré." : "Garage archivé.", "success");
+          showMessage("Demande validée. L’utilisateur peut se reconnecter à son espace professionnel.", "success");
           await loadAdminDashboard();
         } catch (error) { showMessage((error as Error).message, "error"); }
       });
-      item.append(button);
+      reject.addEventListener("click", async () => {
+        const reason = window.prompt("Motif du refus (minimum 10 caractères) :");
+        if (!reason || reason.trim().length < 10) return;
+        try {
+          await api("/api/admin/garage-claims/" + Number(claim.garage_id) + "/reject", {
+            method: "POST", body: JSON.stringify({reason: reason.trim()}),
+          });
+          showMessage("Demande refusée.", "success");
+          await loadAdminDashboard();
+        } catch (error) { showMessage((error as Error).message, "error"); }
+      });
+      item.append(info, form);
+      claimList.append(item);
     }
-    garagesList.append(item);
-  }
-  garagesPanel.append(garagesList);
-  content.append(reviewPanel, garagesPanel);
+    claimPanel.append(claimList);
+    root.append(claimPanel);
 
+    const garagesPanel = document.createElement("section");
+    garagesPanel.id = "admin-garages";
+    garagesPanel.className = "panel";
+    garagesPanel.innerHTML =
+      '<div class="panel-heading"><div><span class="panel-label">GESTION</span><h3>Tous les garages</h3></div>' +
+      '<span>' + garages.length + ' fiches</span></div>' +
+      '<p>Archiver retire la fiche du catalogue sans effacer les réservations ou les paiements existants. Restaurer permet de la republier.</p>';
+    const search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Rechercher un garage, un SIRET, un e-mail…";
+    search.setAttribute("aria-label", "Rechercher un garage");
+    search.style.cssText = "width:100%;max-width:460px;margin:10px 0 18px";
+    const garageList = document.createElement("div");
+    garageList.className = "admin-list";
+    for (const garage of garages) {
+      const item = document.createElement("div");
+      item.className = "admin-row";
+      item.style.cssText = "flex-wrap:wrap;gap:12px";
+      item.dataset.search = [
+        garage.name, garage.city, garage.siret, garage.owner_email, garage.listing_status,
+      ].filter(Boolean).join(" ").toLocaleLowerCase("fr-FR");
+      const info = document.createElement("div");
+      const label = garage.listing_status === "CLAIMED_PARTNER" ? "Partenaire approuvé" :
+        garage.listing_status === "DEMO_LIVE" ? "Atelier fictif de test" :
+        garage.listing_status === "PENDING_VERIFICATION" ? "Demande en attente" :
+        garage.listing_status === "ARCHIVED" ? "Archivé" : "Fiche publique de référence";
+      info.innerHTML =
+        '<strong>' + safeText(garage.name) + '</strong>' +
+        '<small>' + safeText(garage.city) + ' · ' + safeText(label) +
+        ' · ' + Number(garage.services || 0) + ' prestation(s) · ' + Number(garage.bookings || 0) + ' réservation(s)</small>' +
+        '<small>' + safeText(garage.siret || "Sans SIRET (démo)") + ' · ' +
+        safeText(garage.owner_email || "Aucun responsable rattaché") + '</small>';
+      item.append(info);
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:center";
+      const id = Number(garage.id);
+      if (garage.is_public) {
+        const link = document.createElement("a");
+        link.href = "/garages/" + id;
+        link.className = "btn secondary small";
+        link.textContent = "Voir la fiche";
+        actions.append(link);
+      }
+      if (garage.listing_status === "ARCHIVED") {
+        const restore = document.createElement("button");
+        restore.type = "button"; restore.className = "btn small"; restore.textContent = "Restaurer";
+        restore.addEventListener("click", async () => {
+          if (!window.confirm("Restaurer la visibilité de cette fiche ?")) return;
+          try {
+            await api("/api/admin/garages/" + id + "/restore", {method: "POST"});
+            showMessage("Garage restauré.", "success"); await loadAdminDashboard();
+          } catch (error) { showMessage((error as Error).message, "error"); }
+        });
+        actions.append(restore);
+      } else if (garage.listing_status !== "PENDING_VERIFICATION" &&
+                 garage.listing_status !== "DEMO_HIDDEN" && garage.listing_status !== "DEMO_PUBLIC") {
+        if (garage.listing_status === "CLAIMED_PARTNER" || garage.listing_status === "DEMO_LIVE") {
+          const booking = document.createElement("button");
+          booking.type = "button";
+          booking.className = "btn secondary small";
+          booking.textContent = garage.booking_enabled ? "Bloquer réservations" : "Activer réservations";
+          booking.addEventListener("click", async () => {
+            const enabled = !garage.booking_enabled;
+            if (!window.confirm((enabled ? "Activer" : "Désactiver") + " les nouvelles réservations de ce garage ?")) return;
+            try {
+              await api("/api/admin/garages/" + id + "/booking-status", {
+                method: "POST", body: JSON.stringify({enabled}),
+              });
+              showMessage(enabled ? "Réservations activées." : "Réservations bloquées.", "success");
+              await loadAdminDashboard();
+            } catch (error) { showMessage((error as Error).message, "error"); }
+          });
+          actions.append(booking);
+        }
+        const archive = document.createElement("button");
+        archive.type = "button"; archive.className = "btn danger-outline small"; archive.textContent = "Archiver";
+        archive.addEventListener("click", async () => {
+          if (!window.confirm("Retirer ce garage du catalogue ? L’historique sera conservé.")) return;
+          try {
+            await api("/api/admin/garages/" + id, {method: "DELETE"});
+            showMessage("Garage archivé et retiré du catalogue.", "success");
+            await loadAdminDashboard();
+          } catch (error) { showMessage((error as Error).message, "error"); }
+        });
+        actions.append(archive);
+      }
+      if (!actions.children.length) {
+        const labelNode = document.createElement("span");
+        labelNode.className = "status-pill pending";
+        labelNode.textContent = "Traiter dans les demandes";
+        actions.append(labelNode);
+      }
+      item.append(actions);
+      garageList.append(item);
+    }
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLocaleLowerCase("fr-FR");
+      garageList.querySelectorAll<HTMLElement>(".admin-row").forEach((row) => {
+        row.hidden = !String(row.dataset.search || "").includes(q);
+      });
+    });
+    garagesPanel.append(search, garageList);
+    root.append(garagesPanel);
+
+    const activity = document.createElement("section");
+    activity.id = "admin-activity";
+    activity.className = "panel";
+    activity.innerHTML =
+      '<div class="panel-heading"><h3>Activité récente</h3></div>' +
+      '<div class="stats-grid">' +
+      '<article><strong>' + Number(stats.users || 0) + '</strong><span>Utilisateurs</span></article>' +
+      '<article><strong>' + Number(stats.garages || 0) + '</strong><span>Garages</span></article>' +
+      '<article><strong>' + Number(stats.bookings || 0) + '</strong><span>Réservations</span></article>' +
+      '<article><strong>' + Number(stats.payments_succeeded || 0) + '</strong><span>Paiements validés</span></article>' +
+      '</div>';
+    const bookingList = document.createElement("div");
+    bookingList.className = "admin-list";
+    for (const booking of (data.bookings || []).slice(0, 10)) {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = '<div><strong>#' + Number(booking.id) + ' · ' + safeText(booking.service) +
+        '</strong><small>' + safeText(booking.garage) + ' · ' +
+        new Date(booking.starts_at).toLocaleString("fr-FR") +
+        '</small></div><span class="status-pill">' + safeText(booking.status) + '</span>';
+      bookingList.append(row);
+    }
+    if (!bookingList.children.length) bookingList.innerHTML = "<p>Aucune réservation récente.</p>";
+    activity.append(bookingList);
+    root.append(activity);
+    content.replaceChildren(root);
+  } catch (error) {
+    const message = (error as Error).message;
+    content.innerHTML = '<section class="panel"><h3>Administration indisponible</h3>' +
+      '<p>Vérifiez que le compte connecté possède le rôle ADMIN puis rechargez la page.</p>' +
+      '<p id="admin-error-detail"></p></section>';
+    element("admin-error-detail").textContent = message;
+    showMessage("Chargement administrateur impossible : " + message, "error");
+  }
 }
 
 async function loadDashboard(): Promise<void> {

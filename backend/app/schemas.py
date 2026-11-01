@@ -75,6 +75,10 @@ class RegisterDemoGarageIn(BaseModel):
         return value
 
 
+class AdminBookingStatusIn(BaseModel):
+    enabled: bool
+
+
 class RejectGarageClaimIn(BaseModel):
     reason: str = Field(min_length=10, max_length=300)
 

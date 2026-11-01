@@ -988,3 +988,56 @@ def test_real_company_cannot_be_approved_by_demo_proof(client, monkeypatch):
     )
     assert response.status_code == 403
     assert client.get(f"/api/garages/{garage_id}").status_code == 404
+
+
+def test_admin_booking_control_only_for_approved_partner(client):
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        owner = db.scalar(
+            select(User).where(User.email == "garage@mecaconnect.example.com")
+        )
+        assert owner is not None
+        partner = Garage(
+            owner_id=owner.id, name="Atelier partenaire administratif de test",
+            slug="test-admin-booking-toggle", city="Paris",
+            address="1 rue du Test", description="Fiche strictement fictive de test",
+            is_public=True, booking_enabled=True,
+            listing_status="CLAIMED_PARTNER", verified=False,
+        )
+        db.add(partner)
+        db.commit()
+        garage_id = partner.id
+        public_reference = db.scalar(
+            select(Garage).where(Garage.listing_status == "PUBLIC_REFERENCE")
+        )
+        assert public_reference is not None
+        public_id = public_reference.id
+    finally:
+        db.close()
+
+    url = f"/api/admin/garages/{garage_id}/booking-status"
+    assert client.post(url, json={"enabled": False}).status_code in (401, 403)
+    login(client)
+    assert client.post(
+        f"/api/admin/garages/{public_id}/booking-status",
+        json={"enabled": True},
+    ).status_code == 409
+
+    disabled = client.post(url, json={"enabled": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["booking_enabled"] is False
+    assert client.get(f"/api/garages/{garage_id}").json()["booking_enabled"] is False
+
+    enabled = client.post(url, json={"enabled": True})
+    assert enabled.status_code == 200
+    assert enabled.json()["booking_enabled"] is True
+    assert client.delete(f"/api/admin/garages/{garage_id}").status_code == 200
+    assert client.post(url, json={"enabled": True}).status_code == 409
+
+
+def test_admin_html_disables_stale_page_cache(client):
+    page = client.get("/admin")
+    assert page.status_code == 200
+    assert page.headers.get("cache-control") == "no-cache, must-revalidate"
