@@ -719,6 +719,39 @@ def admin_archive_garage(
     return {"garage_id": garage.id, "status": "ARCHIVED"}
 
 
+@app.post("/api/admin/garages/{garage_id}/booking-status")
+def admin_set_booking_status(
+    garage_id: int,
+    payload: schemas.AdminBookingStatusIn,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Autoriser ou bloquer les nouvelles réservations d'un partenaire approuvé."""
+    garage = db.get(models.Garage, garage_id)
+    if not garage:
+        raise HTTPException(status_code=404, detail="Garage introuvable")
+    if garage.listing_status not in {"CLAIMED_PARTNER", "DEMO_LIVE"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Seuls les partenaires approuvés et ateliers fictifs validés peuvent être réservables",
+        )
+    if not garage.owner_id or not garage.is_public:
+        raise HTTPException(status_code=409, detail="Garage sans gestionnaire actif ou non public")
+    owner = db.get(models.User, garage.owner_id)
+    if not owner or owner.role != "GARAGE":
+        raise HTTPException(status_code=409, detail="Le propriétaire du compte n'est pas encore approuvé")
+    garage.booking_enabled = payload.enabled
+    db.commit()
+    add_audit_log(
+        db, admin.id, "ADMIN_SET_BOOKING_STATUS", "garage",
+        f"{garage.id}:enabled={payload.enabled}",
+    )
+    return {
+        "garage_id": garage.id,
+        "booking_enabled": garage.booking_enabled,
+    }
+
+
 @app.post("/api/admin/garages/{garage_id}/restore")
 def admin_restore_garage(
     garage_id: int,
