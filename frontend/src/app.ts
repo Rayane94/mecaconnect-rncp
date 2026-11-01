@@ -528,8 +528,18 @@ async function loadGarageDetail(id: number): Promise<void> {
 
   const list = element<HTMLDivElement>("service-list");
   list.innerHTML = "";
+  // A referenced public service does not acquire a price, slot or owner
+  // merely because someone submitted an account claim.
+  // On connected/test workshops show only explicitly published offers.
+  const services = (isClaimed || isDemo)
+    ? garage.services.filter((service) => service.bookable && Number(service.price) > 0)
+    : garage.services;
+  if ((isClaimed || isDemo) && !services.length) {
+    list.innerHTML = '<div class="empty-state"><strong>Aucune prestation réservable publiée</strong>' +
+      '<span>Dans l’espace professionnel, ajoutez une prestation avec un prix puis publiez un créneau. Les descriptions issues de sites externes ne sont pas des offres de réservation.</span></div>';
+  }
 
-  for (const service of garage.services) {
+  for (const service of services) {
     const canBook = Boolean(garage.booking_enabled && service.bookable);
     const priceMarkup = canBook && service.price > 0
       ? `<strong>${formatPrice(service.price)}</strong>`
