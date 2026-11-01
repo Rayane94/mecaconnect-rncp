@@ -764,3 +764,94 @@ def test_public_newsletter_without_mailer_rejects_subscription(client, monkeypat
     )
     assert r.status_code == 503
     assert "confirmation_path" not in r.text
+
+
+def test_admin_can_reject_unverified_professional_claim(client, monkeypatch):
+    import app.main as main_module
+
+    async def fake_lookup(siret):
+        return {
+            "siret": siret, "siren": siret[:9],
+            "legal_name": "Etablissement Test Sans Mandat",
+            "address": "10 rue du Test", "city": "Paris",
+            "postal_code": "75001", "activity": "4520A",
+        }
+
+    monkeypatch.setattr(main_module, "lookup_company_by_siret", fake_lookup)
+    response = client.post("/api/auth/register-garage", json={
+        "email": "rejected-claim@example.com",
+        "password": "Strong-Claim-Password-2026!",
+        "full_name": "Demandeur non vérifié",
+        "siret": "12345678001122",
+        "garage_name": "Garage à vérifier",
+    })
+    assert response.status_code == 201
+    garage_id = response.json()["garage_id"]
+    # Le SIRET ne doit pas suffire à rendre la fiche réservable.
+    assert client.get(f"/api/garages/{garage_id}").status_code == 404
+    assert client.post(
+        f"/api/admin/garage-claims/{garage_id}/approve",
+        json={"proof_type": "mandat", "proof_reference": "non-verifie"},
+    ).status_code == 403
+    client.post("/api/auth/logout")
+    login(client)
+    assert client.post(
+        f"/api/admin/garage-claims/{garage_id}/reject",
+        json={"reason": "Aucune preuve de représentation fournie"},
+    ).status_code == 200
+    assert client.get(f"/api/garages/{garage_id}").status_code == 404
+    client.post("/api/auth/logout")
+    client.post("/api/auth/login", json={
+        "email": "rejected-claim@example.com",
+        "password": "Strong-Claim-Password-2026!",
+    })
+    assert client.get("/api/auth/me").json()["role"] == "USER"
+
+
+def test_admin_can_archive_and_restore_public_reference(client):
+    db = SessionLocal()
+    try:
+        garage = db.scalar(
+            select(Garage).where(Garage.listing_status == "PUBLIC_REFERENCE")
+        )
+        assert garage is not None
+        garage_id = garage.id
+    finally:
+        db.close()
+    assert client.delete(f"/api/admin/garages/{garage_id}").status_code in (401, 403)
+    login(client)
+    listed = client.get("/api/admin/garages")
+    assert listed.status_code == 200
+    assert any(item["id"] == garage_id for item in listed.json())
+    archive = client.delete(f"/api/admin/garages/{garage_id}")
+    assert archive.status_code == 200
+    assert archive.json()["status"] == "ARCHIVED"
+    assert client.get(f"/api/garages/{garage_id}").status_code == 404
+    restore = client.post(f"/api/admin/garages/{garage_id}/restore")
+    assert restore.status_code == 200
+    visible = client.get(f"/api/garages/{garage_id}")
+    assert visible.status_code == 200
+    assert visible.json()["booking_enabled"] is False
+    assert visible.json()["payment_online_enabled"] is False
+
+
+def test_demo_catalog_visibility_requires_explicit_opt_in(client, monkeypatch):
+    from app.models import User
+    from app.seed import ensure_demo_garage
+    db = SessionLocal()
+    try:
+        owner = db.scalar(select(User).where(
+            User.email == "garage@mecaconnect.example.com"
+        ))
+        assert owner is not None
+        monkeypatch.setenv("MECACONNECT_DEMO_PUBLIC", "true")
+        garage = ensure_demo_garage(db, owner)
+        db.commit()
+        assert client.get(f"/api/garages/{garage.id}").status_code == 200
+        assert garage.listing_status == "DEMO_PUBLIC"
+        monkeypatch.setenv("MECACONNECT_DEMO_PUBLIC", "false")
+        ensure_demo_garage(db, owner)
+        db.commit()
+        assert client.get(f"/api/garages/{garage.id}").status_code == 404
+    finally:
+        db.close()
