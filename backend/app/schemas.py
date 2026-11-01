@@ -54,6 +54,27 @@ class ApproveGarageClaimIn(BaseModel):
     proof_reference: str = Field(min_length=5, max_length=200)
 
 
+class RegisterDemoGarageIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+    full_name: str = Field(min_length=2, max_length=120)
+    garage_name: str = Field(min_length=2, max_length=120)
+    demo_access_code: str = Field(min_length=12, max_length=120)
+
+    @field_validator("password")
+    @classmethod
+    def strong_demo_password(cls, value: str) -> str:
+        groups = [
+            any(char.islower() for char in value),
+            any(char.isupper() for char in value),
+            any(char.isdigit() for char in value),
+            any(not char.isalnum() for char in value),
+        ]
+        if sum(groups) < 3:
+            raise ValueError("Mot de passe trop faible")
+        return value
+
+
 class RejectGarageClaimIn(BaseModel):
     reason: str = Field(min_length=10, max_length=300)
 
