@@ -858,7 +858,7 @@ def test_demo_catalog_visibility_requires_explicit_opt_in(client, monkeypatch):
 
 
 def test_live_certification_demo_creates_garage_services_slots_and_booking(client, monkeypatch):
-    """Le projet peut être montré de bout en bout sans usurper un SIRET réel."""
+    """Le jury peut créer le garage de zéro, le faire valider par l'admin, puis réserver."""
     from datetime import datetime, timedelta, timezone
 
     payload = {
@@ -872,15 +872,53 @@ def test_live_certification_demo_creates_garage_services_slots_and_booking(clien
     monkeypatch.setenv("MECACONNECT_DEMO_SIGNUP_ENABLED", "true")
     monkeypatch.setenv("MECACONNECT_DEMO_ACCESS_CODE", payload["demo_access_code"])
     monkeypatch.setenv("MECACONNECT_DEMO_SIGNUP_EXPIRES_AT", "2099-01-01T00:00:00+00:00")
-    denied = {**payload, "demo_access_code": "INCORRECT-RNCP-DEMO-LONG-TEST"}
-    assert client.post("/api/auth/register-demo-garage", json=denied).status_code == 403
+    wrong = {**payload, "demo_access_code": "INCORRECT-RNCP-DEMO-LONG-TEST"}
+    assert client.post("/api/auth/register-demo-garage", json=wrong).status_code == 403
     assert client.get("/api/demo/status").json()["registration_enabled"] is True
 
     signup = client.post("/api/auth/register-demo-garage", json=payload)
     assert signup.status_code == 201
     garage_id = signup.json()["garage_id"]
     assert signup.json()["siret_verified"] is False
-    assert signup.json()["status"] == "DEMO_LIVE"
+    assert signup.json()["status"] == "PENDING_VERIFICATION"
+    assert signup.json()["role"] == "GARAGE_PENDING"
+    assert client.get(f"/api/garages/{garage_id}").status_code == 404
+
+    not_permitted = client.post("/api/services", json={
+        "garage_id": garage_id, "name": "Prestation interdite",
+        "price": 80, "duration_minutes": 60,
+    })
+    assert not_permitted.status_code == 403
+    # Un autre atelier de démonstration ne peut pas être créé avant validation / archivage.
+    second = {**payload, "email": "seconde-demo@example.com"}
+    assert client.post("/api/auth/register-demo-garage", json=second).status_code == 409
+
+    client.post("/api/auth/logout")
+    login(client)
+    pending = client.get("/api/admin/garage-claims")
+    assert pending.status_code == 200
+    assert any(c["garage_id"] == garage_id and c["is_demo"] for c in pending.json())
+    fake_real_proof = client.post(
+        f"/api/admin/garage-claims/{garage_id}/approve",
+        json={"proof_type": "mandat", "proof_reference": "not-real-for-demo"},
+    )
+    assert fake_real_proof.status_code == 400
+    approved = client.post(
+        f"/api/admin/garage-claims/{garage_id}/approve",
+        json={
+            "proof_type": "simulation_soutenance",
+            "proof_reference": "Démonstration RNCP fictive - aucun tiers engagé",
+        },
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "DEMO_LIVE"
+    client.post("/api/auth/logout")
+
+    relog = client.post("/api/auth/login", json={
+        "email": payload["email"], "password": payload["password"],
+    })
+    assert relog.status_code == 200
+    assert relog.json()["user"]["role"] == "GARAGE"
     garage = client.get(f"/api/garages/{garage_id}")
     assert garage.status_code == 200
     assert garage.json()["siret"] is None
@@ -913,10 +951,40 @@ def test_live_certification_demo_creates_garage_services_slots_and_booking(clien
     session = client.post(f"/api/payments/{booking.json()['id']}/session")
     assert session.status_code == 200
     assert session.json()["mode"] == "pay-at-garage"
-    assert client.post("/api/auth/register-demo-garage", json=payload).status_code == 409
 
     client.post("/api/auth/logout")
     login(client)
     archived = client.delete(f"/api/admin/garages/{garage_id}")
     assert archived.status_code == 200
+    assert client.get(f"/api/garages/{garage_id}").status_code == 404
+
+
+def test_real_company_cannot_be_approved_by_demo_proof(client, monkeypatch):
+    """Le privilège de simulation ne doit jamais fonctionner sur une fiche de garage réel."""
+    import app.main as main_module
+    async def lookup(siret):
+        return {"siret": siret, "siren": siret[:9],
+                "legal_name": "Entreprise automobile factice pour test",
+                "address": "Rue des Tests", "city": "Paris",
+                "postal_code": "75001", "activity": "4520A"}
+    monkeypatch.setattr(main_module, "lookup_company_by_siret", lookup)
+    result = client.post("/api/auth/register-garage", json={
+        "email": "test-reel-approbation@example.com",
+        "password": "StrongRealGarage-2026!",
+        "full_name": "Candidat garage",
+        "siret": "12345678912987",
+        "garage_name": "Garage test déclaration",
+    })
+    assert result.status_code == 201
+    garage_id = result.json()["garage_id"]
+    client.post("/api/auth/logout")
+    login(client)
+    response = client.post(
+        f"/api/admin/garage-claims/{garage_id}/approve",
+        json={
+            "proof_type": "simulation_soutenance",
+            "proof_reference": "Jamais pour une entreprise réelle",
+        },
+    )
+    assert response.status_code == 403
     assert client.get(f"/api/garages/{garage_id}").status_code == 404
