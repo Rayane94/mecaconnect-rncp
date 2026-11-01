@@ -491,11 +491,62 @@ function refreshDynamicEnhancements() {
   enhanceGarageProfile();
 }
 
+async function setupLiveDemoRegistration() {
+  const host = document.getElementById("pro-register");
+  if (!host || document.getElementById("demo-live-signup")) return;
+  let status;
+  try { status = await mcApi("/api/demo/status"); }
+  catch { return; }
+  if (!status.registration_enabled) return;
+  const section = document.createElement("section");
+  section.id = "demo-live-signup";
+  section.className = "pro-register panel";
+  section.style.marginBottom = "22px";
+  section.innerHTML = [
+    '<div><p class="eyebrow">SOUTENANCE RNCP — MODE DÉMONSTRATION</p>',
+    '<h2>Créer un atelier fictif en direct</h2>',
+    '<p class="lead">Atelier de test sans SIRET réel, sans partenariat et sans rendez-vous auprès d’un véritable établissement. Vous créerez vos prestations et créneaux en direct. Pour vérifier un vrai SIRET, utilisez le formulaire professionnel normal ci-dessous : l’accès nécessite l’approbation administrative.</p>',
+    '<p class="pro-access-note">',
+    status.stripe_test_configured ? "Stripe Test déclaré : paiement fictif possible si la clé fonctionne." : "Stripe Test non configuré : démonstration du paiement sur place.",
+    '</p></div>',
+    '<form id="demo-live-form" class="management-form"><div class="form-grid two-cols">',
+    '<label>Votre nom<input name="full_name" required minlength="2" placeholder="Responsable de démonstration"></label>',
+    '<label>Nom de l’atelier fictif<input name="garage_name" required minlength="2" placeholder="Garage de soutenance"></label>',
+    '<label>E-mail du compte de démonstration<input name="email" type="email" autocomplete="email" required></label>',
+    '<label>Mot de passe de démonstration<input name="password" type="password" minlength="12" required autocomplete="new-password"></label>',
+    '<label>Code d’accès temporaire<input name="demo_access_code" type="password" minlength="20" required autocomplete="off"></label>',
+    '</div><p id="demo-live-result" class="company-check" aria-live="polite"></p>',
+    '<button class="btn" type="submit">Créer mon atelier de démonstration</button></form>',
+  ].join("");
+  host.parentNode.insertBefore(section, host);
+  const form = document.getElementById("demo-live-form");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form).entries());
+    if (!mcStrongPassword(String(data.password || ""))) {
+      document.getElementById("demo-live-result").textContent = "Mot de passe : 12 caractères et au moins 3 catégories.";
+      return;
+    }
+    try {
+      await mcApi("/api/auth/register-demo-garage", {
+        method: "POST", body: JSON.stringify(data),
+      });
+      document.getElementById("demo-live-result").textContent = "Compte de test créé. Ouverture de l’espace garage...";
+      window.location.href = "/espace-garage";
+    } catch (error) {
+      const result = document.getElementById("demo-live-result");
+      result.textContent = error.message || "Création impossible";
+      result.className = "company-check error";
+    }
+  });
+}
+
 window.addEventListener("load", () => {
   setupCityAutocomplete();
   setupPasswordErrors();
   setupClientRegisterGuard();
   setupProRegistration();
+  setupLiveDemoRegistration();
   setupRescheduleDialog();
   setupBookingOverride();
   refreshDynamicEnhancements();
