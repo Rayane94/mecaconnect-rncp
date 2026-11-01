@@ -425,8 +425,8 @@ def register_demo_garage(
         raise HTTPException(status_code=409, detail="Adresse e-mail déjà utilisée")
     existing = db.scalar(
         select(models.Garage).where(
-            models.Garage.listing_status == "DEMO_LIVE",
-            models.Garage.is_public.is_(True),
+            models.Garage.slug.like("soutenance-demo-%"),
+            models.Garage.listing_status.in_(("PENDING_VERIFICATION", "DEMO_LIVE")),
         )
     )
     if existing:
@@ -436,7 +436,7 @@ def register_demo_garage(
         )
     user = models.User(
         email=email, password_hash=hash_password(payload.password),
-        full_name=payload.full_name.strip(), role="GARAGE",
+        full_name=payload.full_name.strip(), role="GARAGE_PENDING",
     )
     db.add(user)
     db.flush()
@@ -454,10 +454,10 @@ def register_demo_garage(
         ),
         verified=False,
         siret=None, siren=None,
-        listing_status="DEMO_LIVE",
-        is_public=True,
-        booking_enabled=True,
-        payment_online_enabled=isinstance(get_payment_provider(), StripeHttpProvider),
+        listing_status="PENDING_VERIFICATION",
+        is_public=False,
+        booking_enabled=False,
+        payment_online_enabled=False,
         deposit_rate=0.20,
         source_label="Atelier fictif créé en direct pour la soutenance RNCP",
     )
@@ -473,11 +473,11 @@ def register_demo_garage(
     add_audit_log(db, user.id, "REGISTER_DEMO_GARAGE", "garage", str(garage.id))
     return {
         "garage_id": garage.id,
-        "role": "GARAGE",
-        "status": "DEMO_LIVE",
+        "role": "GARAGE_PENDING",
+        "status": "PENDING_VERIFICATION",
         "siret_verified": False,
-        "payment_test_available": garage.payment_online_enabled,
-        "message": "Atelier fictif créé. Vous pouvez publier prestations et créneaux de test.",
+        "payment_test_available": isinstance(get_payment_provider(), StripeHttpProvider),
+        "message": "Atelier fictif créé : validation de démonstration requise dans l'espace administrateur.",
     }
 
 
@@ -598,6 +598,7 @@ def pending_garage_claims(
             "claimant_id": item.owner_id,
             "claimant_email": db.get(models.User, item.owner_id).email,
             "status": item.listing_status,
+            "is_demo": item.slug.startswith("soutenance-demo-") and item.siret is None,
         }
         for item in pending
     ]
@@ -616,19 +617,26 @@ def approve_garage_claim(
     claimant = db.get(models.User, garage.owner_id)
     if not claimant or claimant.role != "GARAGE_PENDING":
         raise HTTPException(status_code=409, detail="Demande professionnelle incohérente")
-    # L'administrateur atteste avoir contrôlé hors application un élément prouvant
-    # la qualité du représentant. Un SIRET public, seul, n'est JAMAIS une preuve.
+    is_demo = garage.slug.startswith("soutenance-demo-") and garage.siret is None
+    if is_demo:
+        # Le jury voit la même séquence de validation sans impliquer une vraie entreprise.
+        if payload.proof_type != "simulation_soutenance":
+            raise HTTPException(status_code=400, detail="Choisir la validation de démonstration")
+    else:
+        # Ne jamais utiliser la dérogation fictive pour revendiquer un établissement réel.
+        if payload.proof_type == "simulation_soutenance":
+            raise HTTPException(status_code=403, detail="La simulation n'autorise aucun garage réel")
     claimant.role = "GARAGE"
-    garage.listing_status = "CLAIMED_PARTNER"
-    garage.is_public = True  # Une nouvelle fiche approuvée devient consultable publiquement.
+    garage.listing_status = "DEMO_LIVE" if is_demo else "CLAIMED_PARTNER"
+    garage.is_public = True
     garage.booking_enabled = True
-    garage.payment_online_enabled = False
+    garage.payment_online_enabled = (is_demo and isinstance(get_payment_provider(), StripeHttpProvider))
     db.commit()
     add_audit_log(
         db, admin.id, "APPROVE_GARAGE_CLAIM", "garage",
         f"id={garage.id};proof={payload.proof_type};ref={payload.proof_reference[:80]}",
     )
-    return {"garage_id": garage.id, "status": "CLAIMED_PARTNER", "booking_enabled": True}
+    return {"garage_id": garage.id, "status": garage.listing_status, "booking_enabled": True}
 
 
 @app.get("/api/admin/garages")

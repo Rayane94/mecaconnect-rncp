@@ -1277,15 +1277,17 @@ async function loadAdminDashboard(): Promise<void> {
     item.style.flexWrap = "wrap";
     const info = document.createElement("div");
     info.innerHTML = "<strong>" + safeText(claim.name) + "</strong><small>" +
-      safeText(claim.claimant_email) + " · SIRET " + safeText(claim.siret) +
-      "</small><small>" + safeText(claim.legal_name) + "</small>";
+      safeText(claim.claimant_email) + (claim.is_demo ? " · ATELIER FICTIF SANS SIRET" : " · SIRET " + safeText(claim.siret)) +
+      "</small><small>" + (claim.is_demo ? "Simulation de validation administrateur" : safeText(claim.legal_name)) + "</small>";
     const form = document.createElement("form");
     form.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap";
     form.innerHTML =
-      '<label>Preuve vérifiée<select name="proof_type">' +
-      '<option value="mandat">Mandat</option>' +
-      '<option value="contact_independant">Contact direct du garage</option>' +
-      '<option value="justificatif_professionnel">Justificatif professionnel</option>' +
+      '<label>' + (claim.is_demo ? 'Type de validation' : 'Preuve vérifiée') + '<select name="proof_type">' +
+      (claim.is_demo
+        ? '<option value="simulation_soutenance">Scénario fictif de soutenance — aucune entreprise réelle</option>'
+        : '<option value="mandat">Mandat</option>' +
+          '<option value="contact_independant">Contact direct du garage</option>' +
+          '<option value="justificatif_professionnel">Justificatif professionnel</option>') +
       '</select></label>' +
       '<label>Référence du contrôle<input name="proof_reference" required minlength="5" maxlength="200" placeholder="Date, référence, document"></label>' +
       '<button type="submit" class="btn small">Valider</button>' +
@@ -1294,7 +1296,9 @@ async function loadAdminDashboard(): Promise<void> {
       event.preventDefault();
       const proof_type = (form.elements.namedItem("proof_type") as HTMLSelectElement).value;
       const proof_reference = (form.elements.namedItem("proof_reference") as HTMLInputElement).value.trim();
-      if (!window.confirm("Avez-vous réellement contrôlé que le demandeur représente cet établissement ?")) return;
+      if (!window.confirm(claim.is_demo
+        ? "Valider cet atelier EXCLUSIVEMENT FICTIF pour la soutenance RNCP ?"
+        : "Avez-vous réellement contrôlé que le demandeur représente cet établissement ?")) return;
       try {
         await api("/api/admin/garage-claims/" + claim.garage_id + "/approve", {
           method: "POST", body: JSON.stringify({ proof_type, proof_reference }),
@@ -1379,7 +1383,7 @@ async function loadDashboard(): Promise<void> {
   } else if (state.user.role === "GARAGE_PENDING") {
     element("dashboard-eyebrow").textContent = "DEMANDE PROFESSIONNELLE";
     element("dashboard-title").textContent = "Vérification en attente";
-    element<HTMLDivElement>("dashboard-content").innerHTML = '<section class="panel"><h3>Demande reçue</h3><p>Votre SIRET a été identifié, mais l’accès professionnel restera bloqué tant que l’administrateur n’aura pas vérifié votre qualité de représentant.</p></section>';
+    element<HTMLDivElement>("dashboard-content").innerHTML = '<section class="panel"><h3>Demande reçue</h3><p>Votre compte reste en attente de validation par l’administrateur. Pour une véritable entreprise, sa qualité de représentant doit être vérifiée. Pour un atelier fictif de soutenance, l’administrateur peut approuver le scénario de test.</p></section>';
   } else if (state.user.role === "GARAGE") {
     element("dashboard-eyebrow").textContent = "ESPACE PROFESSIONNEL";
     element("dashboard-title").textContent = "Tableau de bord garage";
