@@ -12,7 +12,7 @@ type User = {
   id: number;
   email: string;
   full_name: string;
-  role: "USER" | "GARAGE" | "ADMIN";
+  role: "USER" | "GARAGE" | "GARAGE_PENDING" | "ADMIN";
 };
 
 type Service = {
