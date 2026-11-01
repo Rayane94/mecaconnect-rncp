@@ -92,6 +92,13 @@ async def add_security_headers(request: Request, call_next):
     history.append(now)
     response = await call_next(request)
 
+    # Le navigateur ne doit pas garder l'ancien tableau de bord après un déploiement.
+    # Les scripts TypeScript sont actuellement servis avec des noms non versionnés.
+    if request.url.path.startswith("/assets/") and request.url.path.endswith((".js", ".css")):
+        response.headers["Cache-Control"] = "no-store"
+    elif request.url.path in {"/", "/admin", "/mon-espace", "/espace-garage", "/professionnels", "/connexion"}:
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+
     # Swagger UI initialise son interface avec un script intégré dans /api/docs.
     # L'exception reste limitée à cette page ; le site public conserve une CSP stricte.
     script_src = "'self' https://unpkg.com https://cdn.jsdelivr.net"
