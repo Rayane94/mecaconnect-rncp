@@ -855,3 +855,68 @@ def test_demo_catalog_visibility_requires_explicit_opt_in(client, monkeypatch):
         assert client.get(f"/api/garages/{garage.id}").status_code == 404
     finally:
         db.close()
+
+
+def test_live_certification_demo_creates_garage_services_slots_and_booking(client, monkeypatch):
+    """Le projet peut être montré de bout en bout sans usurper un SIRET réel."""
+    from datetime import datetime, timedelta, timezone
+
+    payload = {
+        "email": "soutenance-demo-once@example.com",
+        "password": "DemoStrongPass-2026!",
+        "full_name": "Responsable de démonstration",
+        "garage_name": "Atelier créé devant le jury",
+        "demo_access_code": "SECRET-RNCP-DEMO-LONG-TEST-2026",
+    }
+    assert client.post("/api/auth/register-demo-garage", json=payload).status_code == 404
+    monkeypatch.setenv("MECACONNECT_DEMO_SIGNUP_ENABLED", "true")
+    monkeypatch.setenv("MECACONNECT_DEMO_ACCESS_CODE", payload["demo_access_code"])
+    monkeypatch.setenv("MECACONNECT_DEMO_SIGNUP_EXPIRES_AT", "2099-01-01T00:00:00+00:00")
+    denied = {**payload, "demo_access_code": "INCORRECT-RNCP-DEMO-LONG-TEST"}
+    assert client.post("/api/auth/register-demo-garage", json=denied).status_code == 403
+    assert client.get("/api/demo/status").json()["registration_enabled"] is True
+
+    signup = client.post("/api/auth/register-demo-garage", json=payload)
+    assert signup.status_code == 201
+    garage_id = signup.json()["garage_id"]
+    assert signup.json()["siret_verified"] is False
+    assert signup.json()["status"] == "DEMO_LIVE"
+    garage = client.get(f"/api/garages/{garage_id}")
+    assert garage.status_code == 200
+    assert garage.json()["siret"] is None
+    assert garage.json()["listing_status"] == "DEMO_LIVE"
+
+    service = client.post("/api/services", json={
+        "garage_id": garage_id, "name": "Révision test",
+        "description": "Prestation créée en direct pour la démonstration.",
+        "price": 80, "duration_minutes": 60,
+    })
+    assert service.status_code == 201
+    service_id = service.json()["id"]
+    starts = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=3)
+    ends = starts + timedelta(hours=1)
+    slot = client.post("/api/availability", json={
+        "garage_id": garage_id, "starts_at": starts.isoformat(), "ends_at": ends.isoformat(),
+    })
+    assert slot.status_code == 201
+    slot_id = slot.json()["id"]
+
+    client.post("/api/auth/logout")
+    client.post("/api/auth/register", json={
+        "email": "booking-soutenance-client@example.com",
+        "password": "ClientStrongPass-2026!", "full_name": "Client démonstrateur",
+    })
+    booking = client.post("/api/bookings", json={"service_id": service_id, "slot_id": slot_id})
+    assert booking.status_code == 201
+    assert booking.json()["status"] == "CONFIRMED"
+    assert booking.json()["payment_required"] is False
+    session = client.post(f"/api/payments/{booking.json()['id']}/session")
+    assert session.status_code == 200
+    assert session.json()["mode"] == "pay-at-garage"
+    assert client.post("/api/auth/register-demo-garage", json=payload).status_code == 409
+
+    client.post("/api/auth/logout")
+    login(client)
+    archived = client.delete(f"/api/admin/garages/{garage_id}")
+    assert archived.status_code == 200
+    assert client.get(f"/api/garages/{garage_id}").status_code == 404
