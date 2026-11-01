@@ -1035,3 +1035,9 @@ def test_admin_booking_control_only_for_approved_partner(client):
     assert enabled.json()["booking_enabled"] is True
     assert client.delete(f"/api/admin/garages/{garage_id}").status_code == 200
     assert client.post(url, json={"enabled": True}).status_code == 409
+
+
+def test_admin_html_disables_stale_page_cache(client):
+    page = client.get("/admin")
+    assert page.status_code == 200
+    assert page.headers.get("cache-control") == "no-cache, must-revalidate"
