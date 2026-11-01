@@ -12,7 +12,7 @@ type User = {
   id: number;
   email: string;
   full_name: string;
-  role: "USER" | "GARAGE" | "ADMIN";
+  role: "USER" | "GARAGE" | "GARAGE_PENDING" | "ADMIN";
 };
 
 type Service = {
@@ -425,7 +425,8 @@ function renderGarages(garages: Garage[]): void {
     const card = document.createElement("article");
     card.className = "garage-card sourced-garage-card";
     const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
-    const badge = isClaimed ? "✓ Garage connecté" : "✓ SIRET vérifié";
+    const isDemo = ["DEMO_PUBLIC", "DEMO_LIVE"].includes(garage.listing_status || "");
+    const badge = isDemo ? "DÉMO — AUCUN GARAGE RÉEL" : isClaimed ? "✓ Garage connecté" : "✓ SIRET vérifié";
     const rating = garage.rating > 0
       ? `<p class="rating" aria-label="Note publiée ${garage.rating} sur 5">${stars(garage.rating)} <span>${garage.rating.toFixed(1)}</span></p>`
       : '<p class="rating muted-rating">Note non publiée</p>';
@@ -440,7 +441,7 @@ function renderGarages(garages: Garage[]): void {
         ${rating}
         <p><strong>${safeText(garage.city)}</strong>${garage.department ? ` (${safeText(garage.department)})` : ""} · ${safeText(garage.address)}</p>
         <div class="specialty-list">${(garage.specialties || []).slice(0, 4).map((item) => `<span>${safeText(item)}</span>`).join("")}</div>
-        <p class="source-note">${isClaimed ? "Établissement connecté à MecaConnect." : "Établissement réel référencé à partir de sources publiques et officielles. Aucun partenariat n’est sous-entendu."}</p>
+        <p class="source-note">${isDemo ? "Atelier fictif de test : aucune prestation réelle, aucun rendez-vous chez un professionnel." : isClaimed ? "Établissement connecté à MecaConnect." : "Établissement réel référencé à partir de sources publiques et officielles. Aucun partenariat n’est sous-entendu."}</p>
         <div class="garage-actions">
           <button class="btn secondary" data-garage="${garage.id}">Voir la fiche</button>
           <button class="link-button map-link" type="button" data-map-garage="${garage.id}">Voir sur la carte</button>
@@ -495,6 +496,7 @@ async function loadGarageDetail(id: number): Promise<void> {
     `${garage.address} - ${garage.city}`;
 
   const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
+  const isDemo = ["DEMO_PUBLIC", "DEMO_LIVE"].includes(garage.listing_status || "");
   const media = element<HTMLDivElement>("garage-detail-media");
   media.innerHTML = garage.photo_url
     ? `<figure><img id="garage-detail-photo" src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}">${garage.photo_source_url ? `<figcaption><a href="${safeAttr(garage.photo_source_url)}" target="_blank" rel="noopener noreferrer">Source de la photo</a></figcaption>` : ""}</figure>`
@@ -508,9 +510,9 @@ async function loadGarageDetail(id: number): Promise<void> {
     <div class="garage-source-grid">
       <span><strong>SIRET</strong> ${safeText(garage.siret || "non publié")}</span>
       ${garage.phone ? `<span><strong>Téléphone</strong> ${safeText(garage.phone)}</span>` : ""}
-      <span><strong>Statut</strong> ${isClaimed ? "Garage connecté à MecaConnect" : "Référencé publiquement - SIRET vérifié"}</span>
+      <span><strong>Statut</strong> ${isDemo ? "ATELIER FICTIF DE DÉMONSTRATION" : isClaimed ? "Garage connecté à MecaConnect" : "Référencé publiquement - SIRET vérifié"}</span>
     </div>
-    <p>${isClaimed
+    <p>${isDemo ? "Atelier fictif interne : prestations, horaires et réservations de TEST uniquement. Aucun établissement réel ne reçoit de demande." : isClaimed
       ? "Le garage a revendiqué et configuré sa fiche MecaConnect."
       : "Les informations et prestations proviennent de sources publiques et du site officiel de l’établissement ou de son réseau. Cette fiche ne constitue pas un partenariat commercial."}</p>
     <div class="garage-source-actions">
@@ -520,7 +522,7 @@ async function loadGarageDetail(id: number): Promise<void> {
   `;
 
   const trust = element<HTMLDivElement>("garage-detail-trust");
-  trust.innerHTML = isClaimed && garage.booking_enabled
+  trust.innerHTML = (isClaimed || isDemo) && garage.booking_enabled
     ? '<strong>Réservation MecaConnect activée</strong><span>Prestations configurées par le garage</span><span>Créneaux disponibles en ligne</span><span>Paiement selon les conditions du garage</span>'
     : '<strong>Fiche publique vérifiée</strong><span>SIRET et établissement contrôlés</span><span>Prestations issues du site officiel</span><span>Tarifs à confirmer auprès du garage</span>';
 
@@ -1258,6 +1260,105 @@ async function loadAdminDashboard(): Promise<void> {
     </div>
     </div>
   `;
+
+  const [claims, managedGarages] = await Promise.all([
+    api<any[]>("/api/admin/garage-claims"),
+    api<any[]>("/api/admin/garages"),
+  ]);
+  const reviewPanel = document.createElement("section");
+  reviewPanel.className = "panel";
+  reviewPanel.innerHTML = '<div class="panel-heading"><h3>Demandes de rattachement · ' + claims.length + '</h3></div>' +
+    '<p>Un SIRET prouve l existence de l établissement, jamais l identité du représentant. Approuvez uniquement après un contrôle externe traçable.</p>';
+  const claimList = document.createElement("div");
+  claimList.className = "admin-list";
+  for (const claim of claims) {
+    const item = document.createElement("div");
+    item.className = "admin-row";
+    item.style.flexWrap = "wrap";
+    const info = document.createElement("div");
+    info.innerHTML = "<strong>" + safeText(claim.name) + "</strong><small>" +
+      safeText(claim.claimant_email) + " · SIRET " + safeText(claim.siret) +
+      "</small><small>" + safeText(claim.legal_name) + "</small>";
+    const form = document.createElement("form");
+    form.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap";
+    form.innerHTML =
+      '<label>Preuve vérifiée<select name="proof_type">' +
+      '<option value="mandat">Mandat</option>' +
+      '<option value="contact_independant">Contact direct du garage</option>' +
+      '<option value="justificatif_professionnel">Justificatif professionnel</option>' +
+      '</select></label>' +
+      '<label>Référence du contrôle<input name="proof_reference" required minlength="5" maxlength="200" placeholder="Date, référence, document"></label>' +
+      '<button type="submit" class="btn small">Valider</button>' +
+      '<button type="button" class="btn secondary small" data-reject>Refuser</button>';
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const proof_type = (form.elements.namedItem("proof_type") as HTMLSelectElement).value;
+      const proof_reference = (form.elements.namedItem("proof_reference") as HTMLInputElement).value.trim();
+      if (!window.confirm("Avez-vous réellement contrôlé que le demandeur représente cet établissement ?")) return;
+      try {
+        await api("/api/admin/garage-claims/" + claim.garage_id + "/approve", {
+          method: "POST", body: JSON.stringify({ proof_type, proof_reference }),
+        });
+        showMessage("Garage approuvé, décision tracée.", "success");
+        await loadAdminDashboard();
+      } catch (error) { showMessage((error as Error).message, "error"); }
+    });
+    form.querySelector<HTMLButtonElement>("[data-reject]")?.addEventListener("click", async () => {
+      const reason = window.prompt("Motif du refus (10 caractères minimum) :");
+      if (!reason || reason.trim().length < 10) return;
+      try {
+        await api("/api/admin/garage-claims/" + claim.garage_id + "/reject", {
+          method: "POST", body: JSON.stringify({reason: reason.trim()}),
+        });
+        showMessage("Demande refusée.", "success");
+        await loadAdminDashboard();
+      } catch (error) { showMessage((error as Error).message, "error"); }
+    });
+    item.append(info, form);
+    claimList.append(item);
+  }
+  if (!claims.length) claimList.innerHTML = "<p>Aucune demande en attente.</p>";
+  reviewPanel.append(claimList);
+
+  const garagesPanel = document.createElement("section");
+  garagesPanel.className = "panel";
+  garagesPanel.innerHTML = '<div class="panel-heading"><h3>Gérer les garages · ' + managedGarages.length + '</h3></div>' +
+    "<p>Archivage réversible : la fiche disparaît du catalogue, les réservations historiques sont conservées.</p>";
+  const garagesList = document.createElement("div");
+  garagesList.className = "admin-list";
+  for (const garage of managedGarages) {
+    const item = document.createElement("div");
+    item.className = "admin-row";
+    item.style.flexWrap = "wrap";
+    const info = document.createElement("div");
+    info.innerHTML = "<strong>" + safeText(garage.name) + "</strong><small>" +
+      safeText(garage.city) + " · " + safeText(garage.listing_status) +
+      " · " + garage.services + " prestations · " + garage.bookings + " réservations</small>" +
+      "<small>" + safeText(garage.owner_email || "Aucun gestionnaire") + "</small>";
+    item.append(info);
+    if (garage.listing_status === "ARCHIVED" || (garage.listing_status !== "PENDING_VERIFICATION" && garage.listing_status !== "DEMO_HIDDEN" && garage.listing_status !== "DEMO_PUBLIC")) {
+      const restore = garage.listing_status === "ARCHIVED";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn secondary small";
+      button.textContent = restore ? "Restaurer" : "Archiver";
+      button.addEventListener("click", async () => {
+        if (!window.confirm(restore ? "Restaurer le garage ?" : "Archiver ce garage sans supprimer ses réservations ?")) return;
+        try {
+          await api("/api/admin/garages/" + garage.id + (restore ? "/restore" : ""), {
+            method: restore ? "POST" : "DELETE",
+          });
+          showMessage(restore ? "Garage restauré." : "Garage archivé.", "success");
+          await loadAdminDashboard();
+        } catch (error) { showMessage((error as Error).message, "error"); }
+      });
+      item.append(button);
+    }
+    garagesList.append(item);
+  }
+  garagesPanel.append(garagesList);
+  content.append(reviewPanel, garagesPanel);
+
 }
 
 async function loadDashboard(): Promise<void> {
@@ -1275,6 +1376,10 @@ async function loadDashboard(): Promise<void> {
     element("dashboard-eyebrow").textContent = "ESPACE AUTOMOBILISTE";
     element("dashboard-title").textContent = "Mon espace";
     await loadUserDashboard();
+  } else if (state.user.role === "GARAGE_PENDING") {
+    element("dashboard-eyebrow").textContent = "DEMANDE PROFESSIONNELLE";
+    element("dashboard-title").textContent = "Vérification en attente";
+    element<HTMLDivElement>("dashboard-content").innerHTML = '<section class="panel"><h3>Demande reçue</h3><p>Votre SIRET a été identifié, mais l’accès professionnel restera bloqué tant que l’administrateur n’aura pas vérifié votre qualité de représentant.</p></section>';
   } else if (state.user.role === "GARAGE") {
     element("dashboard-eyebrow").textContent = "ESPACE PROFESSIONNEL";
     element("dashboard-title").textContent = "Tableau de bord garage";
@@ -1289,7 +1394,8 @@ async function loadDashboard(): Promise<void> {
 async function updateSession(): Promise<void> {
   try {
     state.user = await api<User>("/api/auth/me");
-    element("account-label").textContent = state.user.full_name;
+    element("account-label").textContent = "Mon compte";
+    element<HTMLButtonElement>("account-label").title = state.user.full_name;
     element<HTMLButtonElement>("logout").hidden = false;
     element<HTMLButtonElement>("dashboard-label").hidden = false;
   } catch {
@@ -1452,6 +1558,10 @@ function bindEvents(): void {
           `Réservation confirmée. Acompte test : ${formatPrice(payment.amount)}.`,
           "success",
         );
+        await navigateTo(dashboardPath());
+      } else if (payment.mode === "pay-at-garage") {
+        element<HTMLDialogElement>("booking-dialog").close();
+        showMessage("Réservation confirmée, règlement au garage.", "success");
         await navigateTo(dashboardPath());
       } else if (payment.checkout_url) {
         window.location.href = payment.checkout_url;

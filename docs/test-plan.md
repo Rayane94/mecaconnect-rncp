@@ -17,7 +17,7 @@
 - Réservation d’un créneau et paiement local de test.
 - Newsletter double opt-in et consentement analytics.
 - Connexion et affichage des dashboards GARAGE puis ADMIN.
-- Couverture V8 mesurée : 98,08 % du bundle exécuté et 86,54 % des fonctions.
+- Valeurs historiques du parcours Chromium : ne pas réutiliser comme mesure de la dernière branche. Les 19 tests front-end automatisés ont couvert 94,01 % des lignes, 93,33 % des branches et 93,55 % des fonctions des modules instrumentés lors de la revue d'octobre.
 
 ## Back-end
 - Healthcheck.
@@ -25,18 +25,23 @@
 - Refus des mots de passe faibles.
 - Liste et détail garage.
 - Création d'un véhicule.
-- Réservation + paiement test.
+- Réservation + paiement Stripe Test ou simulation strictement locale.
+- Régression : refus HTTP 503 de paiement simulé lorsque l'environnement public n'a pas de fournisseur Stripe configuré.
+- Régression : refus HTTP 403 de la confirmation simulée en production ; une session Stripe ne doit pas pouvoir être validée par la route de confirmation locale.
+- Régression : aucun jeton de newsletter dans la réponse publique ; un serveur SMTP est nécessaire pour l'envoi du lien.
 - Prévention de la double réservation.
-- Double opt-in newsletter.
+- Double opt-in newsletter : lien local uniquement pour tests et refus de divulgation sur serveur public ; confirmation par e-mail SMTP requise.
 - RBAC administrateur.
 - Export RGPD.
 - Hachage mot de passe, JWT et TOTP.
+
+État vérifié en CI sur la branche de corrections : 76 tests back-end réussis (couverture globale 86 %) et 19 tests front-end réussis. Les valeurs ne prouvent pas, à elles seules, le déploiement du commit en production.
 
 Objectif de couverture : >= 50 % conformément à C18 et C25, cible interne >= 70 %. Les nombres de tests et la couverture sont actualisés à partir de la dernière exécution complète avant livraison, sans réutiliser les anciens rapports comme preuve d'une version plus récente.
 
 
 ## MecaBot / catalogue IDF
-- Vérifier qu'au moins 30 garages sont chargés et que les huit départements IDF sont représentés.
+- Vérifier que les 20 établissements réels du catalogue de référence sont chargés et que les huit départements franciliens sont représentés ; vérifier qu'une fiche `PUBLIC_REFERENCE` n'autorise pas de réservation.
 - Vérifier qu'un symptôme de freinage suffisamment précis retourne la spécialité `freinage`, une estimation et plusieurs garages réellement compétents.
 - Vérifier qu'un message vague ne produit ni estimation ni recommandation et demande une précision.
 - Vérifier qu'un sujet hors automobile ne déclenche aucun diagnostic.

@@ -16,10 +16,11 @@ jobs:
           coverage report --fail-under=50
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Front install, typecheck, tests and build
+      - name: Front install, lint, typecheck, tests and build
         run: |
           cd frontend
-          npm install
+          npm ci
+          npm run lint:static
           npm run typecheck
           npm test
       - name: Python syntax check

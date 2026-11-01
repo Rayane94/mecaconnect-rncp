@@ -1,4 +1,6 @@
 import logging
+import smtplib
+from email.message import EmailMessage
 import os
 import secrets
 import time
@@ -21,7 +23,10 @@ from . import models, schemas
 from .assistant import build_diagnosis, prepare_conversation_message
 from .ai_assistant import ai_is_configured, configured_model, enhance_diagnosis
 from .database import Base, engine, ensure_schema_compatibility, get_db
-from .payment import StripeHttpProvider, get_payment_provider
+from .payment import (
+    LocalTestPaymentProvider, StripeHttpProvider, get_payment_provider,
+    local_test_payments_enabled,
+)
 from .security import (
     create_access_token,
     decode_access_token,
@@ -379,6 +384,103 @@ def register(
 
 
 
+def demo_registration_enabled() -> bool:
+    """Accès provisoire à un atelier explicitement fictif pour soutenance."""
+    enabled = os.getenv("MECACONNECT_DEMO_SIGNUP_ENABLED", "").lower() == "true"
+    secret = os.getenv("MECACONNECT_DEMO_ACCESS_CODE", "")
+    expires = os.getenv("MECACONNECT_DEMO_SIGNUP_EXPIRES_AT", "")
+    if not enabled or len(secret) < 20 or not expires:
+        return False
+    try:
+        limit = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        return limit.tzinfo is not None and datetime.now(timezone.utc) < limit
+    except ValueError:
+        return False
+
+
+@app.get("/api/demo/status", include_in_schema=False)
+def demo_status():
+    provider = get_payment_provider()
+    return {
+        "registration_enabled": demo_registration_enabled(),
+        "stripe_test_configured": isinstance(provider, StripeHttpProvider),
+        "note": "Un garage de soutenance est fictif ; le paiement n'utilise que le mode Test.",
+    }
+
+
+@app.post("/api/auth/register-demo-garage", status_code=201)
+def register_demo_garage(
+    payload: schemas.RegisterDemoGarageIn,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Créer l'atelier en direct sans usurper le SIRET ou la propriété d'un vrai garage."""
+    if not demo_registration_enabled():
+        raise HTTPException(status_code=404, detail="Mode démonstration indisponible")
+    expected = os.getenv("MECACONNECT_DEMO_ACCESS_CODE", "")
+    if not secrets.compare_digest(payload.demo_access_code, expected):
+        raise HTTPException(status_code=403, detail="Code de démonstration invalide")
+    email = payload.email.lower()
+    if db.scalar(select(models.User).where(models.User.email == email)):
+        raise HTTPException(status_code=409, detail="Adresse e-mail déjà utilisée")
+    existing = db.scalar(
+        select(models.Garage).where(
+            models.Garage.listing_status == "DEMO_LIVE",
+            models.Garage.is_public.is_(True),
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Un atelier de soutenance existe déjà. Archivez-le depuis l'espace admin avant de recommencer.",
+        )
+    user = models.User(
+        email=email, password_hash=hash_password(payload.password),
+        full_name=payload.full_name.strip(), role="GARAGE",
+    )
+    db.add(user)
+    db.flush()
+    demo_name = "Atelier DÉMO — " + payload.garage_name.strip()
+    slug = "soutenance-demo-" + secrets.token_hex(5)
+    garage = models.Garage(
+        owner_id=user.id,
+        name=demo_name,
+        slug=slug,
+        city="Paris",
+        address="Atelier fictif — aucune adresse commerciale",
+        description=(
+            "Établissement fictif créé en direct pour la soutenance RNCP MecaConnect. "
+            "Prestations, disponibilités, réservations et paiements uniquement de démonstration."
+        ),
+        verified=False,
+        siret=None, siren=None,
+        listing_status="DEMO_LIVE",
+        is_public=True,
+        booking_enabled=True,
+        payment_online_enabled=isinstance(get_payment_provider(), StripeHttpProvider),
+        deposit_rate=0.20,
+        source_label="Atelier fictif créé en direct pour la soutenance RNCP",
+    )
+    db.add(garage)
+    db.commit()
+    db.refresh(user)
+    db.refresh(garage)
+    token = create_access_token(user.id, user.role)
+    response.set_cookie(
+        "mc_session", token, httponly=True,
+        secure=COOKIE_SECURE, samesite=COOKIE_SAMESITE, max_age=3600,
+    )
+    add_audit_log(db, user.id, "REGISTER_DEMO_GARAGE", "garage", str(garage.id))
+    return {
+        "garage_id": garage.id,
+        "role": "GARAGE",
+        "status": "DEMO_LIVE",
+        "siret_verified": False,
+        "payment_test_available": garage.payment_online_enabled,
+        "message": "Atelier fictif créé. Vous pouvez publier prestations et créneaux de test.",
+    }
+
+
 @app.post("/api/auth/register-garage", status_code=201)
 async def register_garage(
     payload: schemas.RegisterGarageIn,
@@ -403,7 +505,7 @@ async def register_garage(
         email=email,
         password_hash=hash_password(payload.password),
         full_name=payload.full_name.strip(),
-        role="GARAGE",
+        role="GARAGE_PENDING",
         phone_encrypted=encrypt_text(payload.phone),
     )
     db.add(user)
@@ -412,11 +514,11 @@ async def register_garage(
     if existing_garage:
         garage = existing_garage
         garage.owner_id = user.id
-        garage.verified = True
-        garage.listing_status = "CLAIMED_PARTNER"
-        garage.booking_enabled = True
+        garage.verified = True  # SIRET public vérifié ; propriété NON encore confirmée.
+        garage.listing_status = "PENDING_VERIFICATION"
+        garage.booking_enabled = False
         garage.is_public = True
-        garage.payment_online_enabled = True
+        garage.payment_online_enabled = False
         garage.deposit_rate = float(garage.deposit_rate or 0.20)
         garage.siren = company["siren"]
         garage.legal_name = company["legal_name"]
@@ -442,10 +544,10 @@ async def register_garage(
             siren=company["siren"],
             legal_name=company["legal_name"],
             verification_source="Annuaire des Entreprises / API publique",
-            listing_status="CLAIMED_PARTNER",
-            booking_enabled=True,
-            is_public=True,
-            payment_online_enabled=True,
+            listing_status="PENDING_VERIFICATION",
+            booking_enabled=False,
+            is_public=False,
+            payment_online_enabled=False,
             deposit_rate=0.20,
         )
         db.add(garage)
@@ -471,7 +573,163 @@ async def register_garage(
         "garage_id": garage.id,
         "siret": garage.siret,
         "verified": garage.verified,
+        "professional_status": "PENDING_VERIFICATION",
+        "message": "SIRET identifié. Le rattachement au garage attend la vérification de votre qualité de représentant.",
     }
+
+
+@app.get("/api/admin/garage-claims")
+def pending_garage_claims(
+    user: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    pending = db.scalars(
+        select(models.Garage).where(
+            models.Garage.listing_status == "PENDING_VERIFICATION",
+            models.Garage.owner_id.is_not(None),
+        )
+    ).all()
+    return [
+        {
+            "garage_id": item.id,
+            "name": item.name,
+            "siret": item.siret,
+            "legal_name": item.legal_name,
+            "claimant_id": item.owner_id,
+            "claimant_email": db.get(models.User, item.owner_id).email,
+            "status": item.listing_status,
+        }
+        for item in pending
+    ]
+
+
+@app.post("/api/admin/garage-claims/{garage_id}/approve")
+def approve_garage_claim(
+    garage_id: int,
+    payload: schemas.ApproveGarageClaimIn,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or garage.listing_status != "PENDING_VERIFICATION" or not garage.owner_id:
+        raise HTTPException(status_code=404, detail="Demande de rattachement introuvable")
+    claimant = db.get(models.User, garage.owner_id)
+    if not claimant or claimant.role != "GARAGE_PENDING":
+        raise HTTPException(status_code=409, detail="Demande professionnelle incohérente")
+    # L'administrateur atteste avoir contrôlé hors application un élément prouvant
+    # la qualité du représentant. Un SIRET public, seul, n'est JAMAIS une preuve.
+    claimant.role = "GARAGE"
+    garage.listing_status = "CLAIMED_PARTNER"
+    garage.is_public = True  # Une nouvelle fiche approuvée devient consultable publiquement.
+    garage.booking_enabled = True
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(
+        db, admin.id, "APPROVE_GARAGE_CLAIM", "garage",
+        f"id={garage.id};proof={payload.proof_type};ref={payload.proof_reference[:80]}",
+    )
+    return {"garage_id": garage.id, "status": "CLAIMED_PARTNER", "booking_enabled": True}
+
+
+@app.get("/api/admin/garages")
+def admin_list_garages(
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Vue complète, y compris les fiches masquées et archivées."""
+    garages = db.scalars(select(models.Garage).order_by(models.Garage.name)).all()
+    result = []
+    for garage in garages:
+        owner = db.get(models.User, garage.owner_id) if garage.owner_id else None
+        result.append({
+            "id": garage.id,
+            "name": garage.name,
+            "city": garage.city,
+            "siret": garage.siret,
+            "owner_email": owner.email if owner else None,
+            "owner_role": owner.role if owner else None,
+            "listing_status": garage.listing_status,
+            "is_public": bool(garage.is_public),
+            "booking_enabled": bool(garage.booking_enabled),
+            "services": len(garage.services),
+            "bookings": db.scalar(
+                select(func.count(models.Booking.id))
+                .join(models.Service)
+                .where(models.Service.garage_id == garage.id)
+            ) or 0,
+        })
+    return result
+
+
+@app.post("/api/admin/garage-claims/{garage_id}/reject")
+def admin_reject_garage_claim(
+    garage_id: int,
+    payload: schemas.RejectGarageClaimIn,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or garage.listing_status != "PENDING_VERIFICATION" or not garage.owner_id:
+        raise HTTPException(status_code=404, detail="Demande de rattachement introuvable")
+    claimant = db.get(models.User, garage.owner_id)
+    if claimant and claimant.role == "GARAGE_PENDING":
+        claimant.role = "USER"
+    garage.owner_id = None
+    # Une fiche du catalogue public conserve sa présence, sans aucun droit de gestion.
+    garage.listing_status = "PUBLIC_REFERENCE" if garage.source_url else "REJECTED"
+    garage.is_public = bool(garage.source_url)
+    garage.booking_enabled = False
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(
+        db, admin.id, "REJECT_GARAGE_CLAIM", "garage",
+        f"id={garage.id};reason={payload.reason[:160]}",
+    )
+    return {"garage_id": garage.id, "status": garage.listing_status}
+
+
+@app.delete("/api/admin/garages/{garage_id}")
+def admin_archive_garage(
+    garage_id: int,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Archivage réversible sans casser les réservations, paiements et audits."""
+    garage = db.get(models.Garage, garage_id)
+    if not garage:
+        raise HTTPException(status_code=404, detail="Garage introuvable")
+    if garage.listing_status == "PENDING_VERIFICATION":
+        raise HTTPException(status_code=409, detail="Traitez d'abord la demande de rattachement")
+    if garage.slug == "atelier-demo-mecaconnect":
+        raise HTTPException(status_code=409, detail="L'atelier démo est piloté par la configuration de test")
+    garage.listing_status = "ARCHIVED"
+    garage.is_public = False
+    garage.booking_enabled = False
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(db, admin.id, "ARCHIVE_GARAGE", "garage", str(garage.id))
+    return {"garage_id": garage.id, "status": "ARCHIVED"}
+
+
+@app.post("/api/admin/garages/{garage_id}/restore")
+def admin_restore_garage(
+    garage_id: int,
+    admin: models.User = Depends(require_roles("ADMIN")),
+    db: Session = Depends(get_db),
+):
+    garage = db.get(models.Garage, garage_id)
+    if not garage or garage.listing_status != "ARCHIVED":
+        raise HTTPException(status_code=404, detail="Garage archivé introuvable")
+    owner = db.get(models.User, garage.owner_id) if garage.owner_id else None
+    partner = bool(owner and owner.role == "GARAGE")
+    garage.listing_status = "CLAIMED_PARTNER" if partner else "PUBLIC_REFERENCE"
+    garage.is_public = True
+    garage.booking_enabled = partner
+    # Par prudence, l'acompte reste désactivé après une restauration.
+    garage.payment_online_enabled = False
+    db.commit()
+    add_audit_log(db, admin.id, "RESTORE_GARAGE", "garage", str(garage.id))
+    return {"garage_id": garage.id, "status": garage.listing_status}
 
 
 @app.post("/api/auth/login")
@@ -1274,6 +1532,11 @@ async def create_payment_session(
         return {"status": "SUCCEEDED"}
 
     provider = get_payment_provider()
+    if isinstance(provider, LocalTestPaymentProvider) and not local_test_payments_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Paiement en ligne indisponible : Stripe Test n'est pas configuré",
+        )
     result = await provider.create_test_payment(booking.id, booking.deposit_amount)
 
     payment = booking.payment or models.Payment(
@@ -1282,7 +1545,8 @@ async def create_payment_session(
     )
     payment.provider_reference = result.get("provider_reference")
     payment.status = "CREATED"
-    payment.provider = "STRIPE_TEST"
+    payment.provider = ("LOCAL_TEST" if result.get("mode") == "local-test"
+                        else "STRIPE_TEST")
 
     db.add(payment)
     db.commit()
@@ -1305,8 +1569,17 @@ def confirm_local_test_payment(
     if not booking or (booking.user_id != user.id and user.role != "ADMIN"):
         raise HTTPException(status_code=404, detail="Réservation introuvable")
 
+    if not local_test_payments_enabled():
+        raise HTTPException(
+            status_code=403, detail="Confirmation de paiement simulé interdite en ligne",
+        )
     if not booking.payment:
         raise HTTPException(status_code=400, detail="Session de paiement absente")
+    if (booking.payment.provider != "LOCAL_TEST" or
+            not (booking.payment.provider_reference or "").startswith("local_test_")):
+        raise HTTPException(
+            status_code=400, detail="La réservation ne possède pas de paiement local de test",
+        )
 
     booking.payment.status = "SUCCEEDED"
     booking.status = "CONFIRMED"
@@ -1674,6 +1947,40 @@ async def confirm_stripe_payment(
         """
     )
 
+def send_newsletter_confirmation(email: str, url: str) -> None:
+    """Send a one-time link without returning it to the public API caller."""
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_from = os.getenv("SMTP_FROM", "").strip()
+    if not smtp_host or not smtp_from:
+        raise HTTPException(
+            status_code=503,
+            detail="Newsletter momentanément indisponible : envoi e-mail non configuré",
+        )
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+    message = EmailMessage()
+    message["From"] = smtp_from
+    message["To"] = email
+    message["Subject"] = "Confirmez votre inscription à MecaConnect"
+    message.set_content(
+        "Pour confirmer votre inscription à la newsletter MecaConnect, ouvrez ce lien :\n"
+        + url + "\nSi vous n'avez rien demandé, ignorez ce message.\n"
+    )
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=12) as smtp:
+            smtp.starttls()
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+    except Exception as exc:
+        logger.exception("Échec d'envoi de confirmation newsletter")
+        raise HTTPException(
+            status_code=503,
+            detail="E-mail de confirmation indisponible, veuillez réessayer plus tard",
+        ) from exc
+
+
 @app.post("/api/newsletter/request", status_code=201)
 def newsletter_request(
     payload: schemas.NewsletterIn,
@@ -1685,22 +1992,28 @@ def newsletter_request(
             models.NewsletterSubscription.email == email
         )
     )
-
     if subscription and subscription.confirmed:
         return {"status": "already_confirmed"}
 
     token = secrets.token_urlsafe(24)
+    confirmation_path = f"/api/newsletter/confirm/{token}"
+    local_demo = local_test_payments_enabled()
+    if not local_demo:
+        # Fail closed: never return a confirmation token to the API caller
+        # and require a working delivery service on public deployments.
+        send_newsletter_confirmation(
+            email, f"{APP_BASE_URL}{confirmation_path}",
+        )
     if subscription:
         subscription.token = token
     else:
         db.add(models.NewsletterSubscription(email=email, token=token))
-
     db.commit()
-    return {
-        "status": "confirmation_required",
-        # En production, ce lien serait envoyé par e-mail.
-        "confirmation_path": f"/api/newsletter/confirm/{token}",
-    }
+    response = {"status": "confirmation_required"}
+    if local_demo:
+        # Local pedagogical demonstration only.
+        response["confirmation_path"] = confirmation_path
+    return response
 
 
 @app.get("/api/newsletter/confirm/{token}")

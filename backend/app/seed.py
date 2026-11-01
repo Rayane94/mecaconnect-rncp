@@ -498,12 +498,21 @@ def upsert_real_garage(db, data: dict) -> Garage:
     if not garage:
         garage = db.scalar(select(Garage).where(Garage.slug == data["slug"]))
 
+    # Un garage archivé par l'administrateur ne doit jamais être republié par le seed.
+    if garage and garage.listing_status == "ARCHIVED":
+        return garage
+
     lat = garage.lat if garage and garage.lat is not None else None
     lng = garage.lng if garage and garage.lng is not None else None
     if lat is None or lng is None:
         lat, lng = geocode_address(data["address"])
 
-    claimed = bool(garage and garage.owner_id)
+    claimed = bool(
+        garage
+        and garage.owner_id
+        and garage.listing_status == "CLAIMED_PARTNER"
+    )
+    pending = bool(garage and garage.listing_status == "PENDING_VERIFICATION")
     values = {
         "name": data["name"],
         "slug": data["slug"],
@@ -527,9 +536,13 @@ def upsert_real_garage(db, data: dict) -> Garage:
         "source_verified_at": PUBLIC_SOURCE_VERIFIED_AT,
         "description": public_description(data),
         "verified": True,
-        "listing_status": "CLAIMED_PARTNER" if claimed else "PUBLIC_REFERENCE",
-        "booking_enabled": garage.booking_enabled if claimed else False,
-        "payment_online_enabled": garage.payment_online_enabled if claimed else False,
+        "listing_status": (
+            "CLAIMED_PARTNER" if claimed else
+            "PENDING_VERIFICATION" if pending else
+            "PUBLIC_REFERENCE"
+        ),
+        "booking_enabled": bool(garage.booking_enabled) if claimed else False,
+        "payment_online_enabled": bool(garage.payment_online_enabled) if claimed else False,
         "deposit_rate": float(garage.deposit_rate or 0.20) if claimed else 0.20,
         "is_public": True,
         "lat": lat,
@@ -541,8 +554,15 @@ def upsert_real_garage(db, data: dict) -> Garage:
         db.add(garage)
         db.flush()
     else:
+        # Après validation, les champs gérés par le professionnel ne sont
+        # plus écrasés par le seed à chaque redéploiement.
+        managed = {
+            "name", "description", "specialties", "brands", "payment_online_enabled",
+            "deposit_rate", "booking_enabled",
+        } if claimed else set()
         for key, value in values.items():
-            setattr(garage, key, value)
+            if key not in managed:
+                setattr(garage, key, value)
         db.flush()
 
     replace_sourced_services(db, garage, data["services"], data["source_url"])
@@ -550,16 +570,19 @@ def upsert_real_garage(db, data: dict) -> Garage:
 
 
 def ensure_demo_garage(db, garage_user: User) -> Garage:
+    # L'atelier fictif peut être temporairement publié pour une démonstration.
+    demo_public = os.getenv("MECACONNECT_DEMO_PUBLIC", "false").lower() in {"1", "true", "yes"}
+    demo_status = "DEMO_PUBLIC" if demo_public else "DEMO_HIDDEN"
     garage = db.scalar(select(Garage).where(Garage.slug == DEMO_GARAGE["slug"]))
     if not garage:
         garage = Garage(
             owner_id=garage_user.id,
             verified=True,
-            listing_status="DEMO_HIDDEN",
+            listing_status=demo_status,
             booking_enabled=True,
             payment_online_enabled=True,
             deposit_rate=0.20,
-            is_public=False,
+            is_public=demo_public,
             rating=0.0,
             source_label="Donnée interne de démonstration",
             **DEMO_GARAGE,
@@ -568,9 +591,9 @@ def ensure_demo_garage(db, garage_user: User) -> Garage:
         db.flush()
     else:
         garage.owner_id = garage_user.id
-        garage.is_public = False
+        garage.is_public = demo_public
         garage.booking_enabled = True
-        garage.listing_status = "DEMO_HIDDEN"
+        garage.listing_status = demo_status
         garage.payment_online_enabled = True
         db.flush()
 
@@ -593,8 +616,14 @@ def ensure_demo_garage(db, garage_user: User) -> Garage:
             )
         db.flush()
 
+    # Renouveler les créneaux de test expirés, sans écraser les réservations passées.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     existing_slot = db.scalar(
-        select(Availability.id).where(Availability.garage_id == garage.id).limit(1)
+        select(Availability.id).where(
+            Availability.garage_id == garage.id,
+            Availability.starts_at > now,
+            Availability.is_booked.is_(False),
+        ).limit(1)
     )
     if not existing_slot:
         tomorrow = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
@@ -638,6 +667,9 @@ def run() -> None:
         # catalogue et de la carte publics.
         legacy = db.scalars(select(Garage).where(Garage.siret.is_(None))).all()
         for garage in legacy:
+            if garage.listing_status == "DEMO_LIVE":
+                # Atelier fictif créé pendant la soutenance : ne jamais le masquer au redéploiement.
+                continue
             garage.is_public = False
             if garage.slug != DEMO_GARAGE["slug"] and garage.owner_id == garage_user.id:
                 garage.owner_id = None

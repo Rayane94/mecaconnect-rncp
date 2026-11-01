@@ -1,5 +1,6 @@
 import os
 import uuid
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -76,6 +77,14 @@ class StripeTestPaymentProvider(PaymentProvider):
 # Alias conservés pour garder des noms simples dans les tests et le dossier.
 StripeHttpProvider = StripeTestPaymentProvider
 LocalStripeTestProvider = LocalTestPaymentProvider
+
+
+def local_test_payments_enabled() -> bool:
+    """Only the developer's loopback environment may confirm simulated payments."""
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("APP_ENV", "").lower() == "production":
+        return False
+    url = urlsplit(os.getenv("APP_BASE_URL", "http://localhost:8000"))
+    return url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
 def get_payment_provider() -> PaymentProvider:

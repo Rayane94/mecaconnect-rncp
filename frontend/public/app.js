@@ -1075,7 +1075,8 @@ async function loadDashboard() {
 async function updateSession() {
     try {
         state.user = await api("/api/auth/me");
-        element("account-label").textContent = state.user.full_name;
+        element("account-label").textContent = "Mon compte";
+    element("account-label").title = state.user.full_name;
         element("logout").hidden = false;
         element("dashboard-label").hidden = false;
     }
