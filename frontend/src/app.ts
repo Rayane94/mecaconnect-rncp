@@ -1258,6 +1258,105 @@ async function loadAdminDashboard(): Promise<void> {
     </div>
     </div>
   `;
+
+  const [claims, managedGarages] = await Promise.all([
+    api<any[]>("/api/admin/garage-claims"),
+    api<any[]>("/api/admin/garages"),
+  ]);
+  const reviewPanel = document.createElement("section");
+  reviewPanel.className = "panel";
+  reviewPanel.innerHTML = '<div class="panel-heading"><h3>Demandes de rattachement · ' + claims.length + '</h3></div>' +
+    '<p>Un SIRET prouve l existence de l établissement, jamais l identité du représentant. Approuvez uniquement après un contrôle externe traçable.</p>';
+  const claimList = document.createElement("div");
+  claimList.className = "admin-list";
+  for (const claim of claims) {
+    const item = document.createElement("div");
+    item.className = "admin-row";
+    item.style.flexWrap = "wrap";
+    const info = document.createElement("div");
+    info.innerHTML = "<strong>" + safeText(claim.name) + "</strong><small>" +
+      safeText(claim.claimant_email) + " · SIRET " + safeText(claim.siret) +
+      "</small><small>" + safeText(claim.legal_name) + "</small>";
+    const form = document.createElement("form");
+    form.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap";
+    form.innerHTML =
+      '<label>Preuve vérifiée<select name="proof_type">' +
+      '<option value="mandat">Mandat</option>' +
+      '<option value="contact_independant">Contact direct du garage</option>' +
+      '<option value="justificatif_professionnel">Justificatif professionnel</option>' +
+      '</select></label>' +
+      '<label>Référence du contrôle<input name="proof_reference" required minlength="5" maxlength="200" placeholder="Date, référence, document"></label>' +
+      '<button type="submit" class="btn small">Valider</button>' +
+      '<button type="button" class="btn secondary small" data-reject>Refuser</button>';
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const proof_type = (form.elements.namedItem("proof_type") as HTMLSelectElement).value;
+      const proof_reference = (form.elements.namedItem("proof_reference") as HTMLInputElement).value.trim();
+      if (!window.confirm("Avez-vous réellement contrôlé que le demandeur représente cet établissement ?")) return;
+      try {
+        await api("/api/admin/garage-claims/" + claim.garage_id + "/approve", {
+          method: "POST", body: JSON.stringify({ proof_type, proof_reference }),
+        });
+        showMessage("Garage approuvé, décision tracée.", "success");
+        await loadAdminDashboard();
+      } catch (error) { showMessage((error as Error).message, "error"); }
+    });
+    form.querySelector<HTMLButtonElement>("[data-reject]")?.addEventListener("click", async () => {
+      const reason = window.prompt("Motif du refus (10 caractères minimum) :");
+      if (!reason || reason.trim().length < 10) return;
+      try {
+        await api("/api/admin/garage-claims/" + claim.garage_id + "/reject", {
+          method: "POST", body: JSON.stringify({reason: reason.trim()}),
+        });
+        showMessage("Demande refusée.", "success");
+        await loadAdminDashboard();
+      } catch (error) { showMessage((error as Error).message, "error"); }
+    });
+    item.append(info, form);
+    claimList.append(item);
+  }
+  if (!claims.length) claimList.innerHTML = "<p>Aucune demande en attente.</p>";
+  reviewPanel.append(claimList);
+
+  const garagesPanel = document.createElement("section");
+  garagesPanel.className = "panel";
+  garagesPanel.innerHTML = '<div class="panel-heading"><h3>Gérer les garages · ' + managedGarages.length + '</h3></div>' +
+    "<p>Archivage réversible : la fiche disparaît du catalogue, les réservations historiques sont conservées.</p>";
+  const garagesList = document.createElement("div");
+  garagesList.className = "admin-list";
+  for (const garage of managedGarages) {
+    const item = document.createElement("div");
+    item.className = "admin-row";
+    item.style.flexWrap = "wrap";
+    const info = document.createElement("div");
+    info.innerHTML = "<strong>" + safeText(garage.name) + "</strong><small>" +
+      safeText(garage.city) + " · " + safeText(garage.listing_status) +
+      " · " + garage.services + " prestations · " + garage.bookings + " réservations</small>" +
+      "<small>" + safeText(garage.owner_email || "Aucun gestionnaire") + "</small>";
+    item.append(info);
+    if (garage.listing_status === "ARCHIVED" || (garage.listing_status !== "PENDING_VERIFICATION" && !garage.listing_status.startsWith("DEMO_"))) {
+      const restore = garage.listing_status === "ARCHIVED";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn secondary small";
+      button.textContent = restore ? "Restaurer" : "Archiver";
+      button.addEventListener("click", async () => {
+        if (!window.confirm(restore ? "Restaurer le garage ?" : "Archiver ce garage sans supprimer ses réservations ?")) return;
+        try {
+          await api("/api/admin/garages/" + garage.id + (restore ? "/restore" : ""), {
+            method: restore ? "POST" : "DELETE",
+          });
+          showMessage(restore ? "Garage restauré." : "Garage archivé.", "success");
+          await loadAdminDashboard();
+        } catch (error) { showMessage((error as Error).message, "error"); }
+      });
+      item.append(button);
+    }
+    garagesList.append(item);
+  }
+  garagesPanel.append(garagesList);
+  content.append(reviewPanel, garagesPanel);
+
 }
 
 async function loadDashboard(): Promise<void> {
@@ -1275,6 +1374,10 @@ async function loadDashboard(): Promise<void> {
     element("dashboard-eyebrow").textContent = "ESPACE AUTOMOBILISTE";
     element("dashboard-title").textContent = "Mon espace";
     await loadUserDashboard();
+  } else if (state.user.role === "GARAGE_PENDING") {
+    element("dashboard-eyebrow").textContent = "DEMANDE PROFESSIONNELLE";
+    element("dashboard-title").textContent = "Vérification en attente";
+    element<HTMLDivElement>("dashboard-content").innerHTML = '<section class="panel"><h3>Demande reçue</h3><p>Votre SIRET a été identifié, mais l’accès professionnel restera bloqué tant que l’administrateur n’aura pas vérifié votre qualité de représentant.</p></section>';
   } else if (state.user.role === "GARAGE") {
     element("dashboard-eyebrow").textContent = "ESPACE PROFESSIONNEL";
     element("dashboard-title").textContent = "Tableau de bord garage";
