@@ -425,7 +425,7 @@ function renderGarages(garages: Garage[]): void {
     const card = document.createElement("article");
     card.className = "garage-card sourced-garage-card";
     const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
-    const isDemo = garage.listing_status === "DEMO_PUBLIC";
+    const isDemo = ["DEMO_PUBLIC", "DEMO_LIVE"].includes(garage.listing_status || "");
     const badge = isDemo ? "DÉMO — AUCUN GARAGE RÉEL" : isClaimed ? "✓ Garage connecté" : "✓ SIRET vérifié";
     const rating = garage.rating > 0
       ? `<p class="rating" aria-label="Note publiée ${garage.rating} sur 5">${stars(garage.rating)} <span>${garage.rating.toFixed(1)}</span></p>`
@@ -496,7 +496,7 @@ async function loadGarageDetail(id: number): Promise<void> {
     `${garage.address} - ${garage.city}`;
 
   const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
-  const isDemo = garage.listing_status === "DEMO_PUBLIC";
+  const isDemo = ["DEMO_PUBLIC", "DEMO_LIVE"].includes(garage.listing_status || "");
   const media = element<HTMLDivElement>("garage-detail-media");
   media.innerHTML = garage.photo_url
     ? `<figure><img id="garage-detail-photo" src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}">${garage.photo_source_url ? `<figcaption><a href="${safeAttr(garage.photo_source_url)}" target="_blank" rel="noopener noreferrer">Source de la photo</a></figcaption>` : ""}</figure>`
@@ -1336,7 +1336,7 @@ async function loadAdminDashboard(): Promise<void> {
       " · " + garage.services + " prestations · " + garage.bookings + " réservations</small>" +
       "<small>" + safeText(garage.owner_email || "Aucun gestionnaire") + "</small>";
     item.append(info);
-    if (garage.listing_status === "ARCHIVED" || (garage.listing_status !== "PENDING_VERIFICATION" && !garage.listing_status.startsWith("DEMO_"))) {
+    if (garage.listing_status === "ARCHIVED" || (garage.listing_status !== "PENDING_VERIFICATION" && garage.listing_status !== "DEMO_HIDDEN" && garage.listing_status !== "DEMO_PUBLIC")) {
       const restore = garage.listing_status === "ARCHIVED";
       const button = document.createElement("button");
       button.type = "button";
