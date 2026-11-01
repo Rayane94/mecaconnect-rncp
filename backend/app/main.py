@@ -384,6 +384,103 @@ def register(
 
 
 
+def demo_registration_enabled() -> bool:
+    """Accès provisoire à un atelier explicitement fictif pour soutenance."""
+    enabled = os.getenv("MECACONNECT_DEMO_SIGNUP_ENABLED", "").lower() == "true"
+    secret = os.getenv("MECACONNECT_DEMO_ACCESS_CODE", "")
+    expires = os.getenv("MECACONNECT_DEMO_SIGNUP_EXPIRES_AT", "")
+    if not enabled or len(secret) < 20 or not expires:
+        return False
+    try:
+        limit = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        return limit.tzinfo is not None and datetime.now(timezone.utc) < limit
+    except ValueError:
+        return False
+
+
+@app.get("/api/demo/status", include_in_schema=False)
+def demo_status():
+    provider = get_payment_provider()
+    return {
+        "registration_enabled": demo_registration_enabled(),
+        "stripe_test_configured": isinstance(provider, StripeHttpProvider),
+        "note": "Un garage de soutenance est fictif ; le paiement n'utilise que le mode Test.",
+    }
+
+
+@app.post("/api/auth/register-demo-garage", status_code=201)
+def register_demo_garage(
+    payload: schemas.RegisterDemoGarageIn,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Créer l'atelier en direct sans usurper le SIRET ou la propriété d'un vrai garage."""
+    if not demo_registration_enabled():
+        raise HTTPException(status_code=404, detail="Mode démonstration indisponible")
+    expected = os.getenv("MECACONNECT_DEMO_ACCESS_CODE", "")
+    if not secrets.compare_digest(payload.demo_access_code, expected):
+        raise HTTPException(status_code=403, detail="Code de démonstration invalide")
+    email = payload.email.lower()
+    if db.scalar(select(models.User).where(models.User.email == email)):
+        raise HTTPException(status_code=409, detail="Adresse e-mail déjà utilisée")
+    existing = db.scalar(
+        select(models.Garage).where(
+            models.Garage.listing_status == "DEMO_LIVE",
+            models.Garage.is_public.is_(True),
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Un atelier de soutenance existe déjà. Archivez-le depuis l'espace admin avant de recommencer.",
+        )
+    user = models.User(
+        email=email, password_hash=hash_password(payload.password),
+        full_name=payload.full_name.strip(), role="GARAGE",
+    )
+    db.add(user)
+    db.flush()
+    demo_name = "Atelier DÉMO — " + payload.garage_name.strip()
+    slug = "soutenance-demo-" + secrets.token_hex(5)
+    garage = models.Garage(
+        owner_id=user.id,
+        name=demo_name,
+        slug=slug,
+        city="Paris",
+        address="Atelier fictif — aucune adresse commerciale",
+        description=(
+            "Établissement fictif créé en direct pour la soutenance RNCP MecaConnect. "
+            "Prestations, disponibilités, réservations et paiements uniquement de démonstration."
+        ),
+        verified=False,
+        siret=None, siren=None,
+        listing_status="DEMO_LIVE",
+        is_public=True,
+        booking_enabled=True,
+        payment_online_enabled=isinstance(get_payment_provider(), StripeHttpProvider),
+        deposit_rate=0.20,
+        source_label="Atelier fictif créé en direct pour la soutenance RNCP",
+    )
+    db.add(garage)
+    db.commit()
+    db.refresh(user)
+    db.refresh(garage)
+    token = create_access_token(user.id, user.role)
+    response.set_cookie(
+        "mc_session", token, httponly=True,
+        secure=COOKIE_SECURE, samesite=COOKIE_SAMESITE, max_age=3600,
+    )
+    add_audit_log(db, user.id, "REGISTER_DEMO_GARAGE", "garage", str(garage.id))
+    return {
+        "garage_id": garage.id,
+        "role": "GARAGE",
+        "status": "DEMO_LIVE",
+        "siret_verified": False,
+        "payment_test_available": garage.payment_online_enabled,
+        "message": "Atelier fictif créé. Vous pouvez publier prestations et créneaux de test.",
+    }
+
+
 @app.post("/api/auth/register-garage", status_code=201)
 async def register_garage(
     payload: schemas.RegisterGarageIn,
