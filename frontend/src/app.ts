@@ -907,7 +907,7 @@ async function loadGarageDashboard(activeTab = "overview"): Promise<void> {
           <h3>${safeText(garages[0].name)}</h3>
           <p>${safeText(garages[0].city)} · Gérez vos prestations, disponibilités et rendez-vous depuis un seul écran.</p>
         </div>
-        <div class="garage-hero-status"><span class="status-pill ${garages[0].verified ? "verified" : "pending"}">${garages[0].verified ? "✓ Garage vérifié" : "Vérification en attente"}</span><small>${safeText(state.user?.email || "")}</small></div>
+        <div class="garage-hero-status"><span class="status-pill ${garages[0].listing_status === "DEMO_LIVE" || garages[0].verified ? "verified" : "pending"}">${garages[0].listing_status === "DEMO_LIVE" ? "Atelier fictif approuvé pour le test" : garages[0].verified ? "✓ Garage vérifié" : "Vérification en attente"}</span><small>${safeText(state.user?.email || "")}</small></div>
       </div>
 
       <div class="dashboard-kpis garage-kpis">
