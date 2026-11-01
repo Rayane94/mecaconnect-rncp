@@ -574,7 +574,7 @@ def ensure_demo_garage(db, garage_user: User) -> Garage:
     # Galerie de soutenance temporaire : le seul atelier fictif réservable.
     # Aucune fiche de tiers n'est transformée en partenaire ou en offre à réserver.
     showcase_ends = datetime(2026, 11, 5, 0, 0, tzinfo=timezone.utc)
-    showcase_active = datetime.now(timezone.utc) < showcase_ends
+    showcase_active = bool(os.getenv("RAILWAY_ENVIRONMENT")) and datetime.now(timezone.utc) < showcase_ends
     demo_public = showcase_active or os.getenv("MECACONNECT_DEMO_PUBLIC", "false").lower() in {"1", "true", "yes"}
     demo_status = "DEMO_PUBLIC" if demo_public else "DEMO_HIDDEN"
     stripe_test_ready = os.getenv("STRIPE_SECRET_KEY", "").startswith("sk_test_")
