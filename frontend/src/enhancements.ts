@@ -519,6 +519,26 @@ async function setupLiveDemoRegistration() {
     '<button class="btn" type="submit">Créer mon atelier de démonstration</button></form>',
   ].join("");
   host.parentNode.insertBefore(section, host);
+
+  // When demo mode is available, the public CTA must not jump past the demo
+  // form straight to the real-garage SIRET application.
+  const realSignupLink = document.querySelector(
+    '.pro-hero a[href="#pro-register"]'
+  );
+  if (realSignupLink) {
+    const demoLink = document.createElement("a");
+    demoLink.href = "#demo-live-signup";
+    demoLink.className = "btn secondary";
+    demoLink.textContent = "Créer un atelier DÉMO (sans SIRET)";
+    demoLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      document.getElementById("demo-live-signup")?.scrollIntoView({
+        behavior: "smooth", block: "start",
+      });
+    });
+    realSignupLink.parentNode.insertBefore(demoLink, realSignupLink);
+    realSignupLink.textContent = "Inscription d'un vrai garage (SIRET)";
+  }
   const form = document.getElementById("demo-live-form");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
