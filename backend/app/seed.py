@@ -667,6 +667,9 @@ def run() -> None:
         # catalogue et de la carte publics.
         legacy = db.scalars(select(Garage).where(Garage.siret.is_(None))).all()
         for garage in legacy:
+            if garage.listing_status == "DEMO_LIVE":
+                # Atelier fictif créé pendant la soutenance : ne jamais le masquer au redéploiement.
+                continue
             garage.is_public = False
             if garage.slug != DEMO_GARAGE["slug"] and garage.owner_id == garage_user.id:
                 garage.owner_id = None
