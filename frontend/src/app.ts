@@ -425,7 +425,8 @@ function renderGarages(garages: Garage[]): void {
     const card = document.createElement("article");
     card.className = "garage-card sourced-garage-card";
     const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
-    const badge = isClaimed ? "✓ Garage connecté" : "✓ SIRET vérifié";
+    const isDemo = garage.listing_status === "DEMO_PUBLIC";
+    const badge = isDemo ? "DÉMO — AUCUN GARAGE RÉEL" : isClaimed ? "✓ Garage connecté" : "✓ SIRET vérifié";
     const rating = garage.rating > 0
       ? `<p class="rating" aria-label="Note publiée ${garage.rating} sur 5">${stars(garage.rating)} <span>${garage.rating.toFixed(1)}</span></p>`
       : '<p class="rating muted-rating">Note non publiée</p>';
@@ -440,7 +441,7 @@ function renderGarages(garages: Garage[]): void {
         ${rating}
         <p><strong>${safeText(garage.city)}</strong>${garage.department ? ` (${safeText(garage.department)})` : ""} · ${safeText(garage.address)}</p>
         <div class="specialty-list">${(garage.specialties || []).slice(0, 4).map((item) => `<span>${safeText(item)}</span>`).join("")}</div>
-        <p class="source-note">${isClaimed ? "Établissement connecté à MecaConnect." : "Établissement réel référencé à partir de sources publiques et officielles. Aucun partenariat n’est sous-entendu."}</p>
+        <p class="source-note">${isDemo ? "Atelier fictif de test : aucune prestation réelle, aucun rendez-vous chez un professionnel." : isClaimed ? "Établissement connecté à MecaConnect." : "Établissement réel référencé à partir de sources publiques et officielles. Aucun partenariat n’est sous-entendu."}</p>
         <div class="garage-actions">
           <button class="btn secondary" data-garage="${garage.id}">Voir la fiche</button>
           <button class="link-button map-link" type="button" data-map-garage="${garage.id}">Voir sur la carte</button>
@@ -495,6 +496,7 @@ async function loadGarageDetail(id: number): Promise<void> {
     `${garage.address} - ${garage.city}`;
 
   const isClaimed = garage.listing_status === "CLAIMED_PARTNER";
+  const isDemo = garage.listing_status === "DEMO_PUBLIC";
   const media = element<HTMLDivElement>("garage-detail-media");
   media.innerHTML = garage.photo_url
     ? `<figure><img id="garage-detail-photo" src="${safeAttr(garage.photo_url)}" alt="Photo de ${safeAttr(garage.name)}">${garage.photo_source_url ? `<figcaption><a href="${safeAttr(garage.photo_source_url)}" target="_blank" rel="noopener noreferrer">Source de la photo</a></figcaption>` : ""}</figure>`
@@ -508,9 +510,9 @@ async function loadGarageDetail(id: number): Promise<void> {
     <div class="garage-source-grid">
       <span><strong>SIRET</strong> ${safeText(garage.siret || "non publié")}</span>
       ${garage.phone ? `<span><strong>Téléphone</strong> ${safeText(garage.phone)}</span>` : ""}
-      <span><strong>Statut</strong> ${isClaimed ? "Garage connecté à MecaConnect" : "Référencé publiquement - SIRET vérifié"}</span>
+      <span><strong>Statut</strong> ${isDemo ? "ATELIER FICTIF DE DÉMONSTRATION" : isClaimed ? "Garage connecté à MecaConnect" : "Référencé publiquement - SIRET vérifié"}</span>
     </div>
-    <p>${isClaimed
+    <p>${isDemo ? "Atelier fictif interne : prestations, horaires et réservations de TEST uniquement. Aucun établissement réel ne reçoit de demande." : isClaimed
       ? "Le garage a revendiqué et configuré sa fiche MecaConnect."
       : "Les informations et prestations proviennent de sources publiques et du site officiel de l’établissement ou de son réseau. Cette fiche ne constitue pas un partenariat commercial."}</p>
     <div class="garage-source-actions">
@@ -520,7 +522,7 @@ async function loadGarageDetail(id: number): Promise<void> {
   `;
 
   const trust = element<HTMLDivElement>("garage-detail-trust");
-  trust.innerHTML = isClaimed && garage.booking_enabled
+  trust.innerHTML = (isClaimed || isDemo) && garage.booking_enabled
     ? '<strong>Réservation MecaConnect activée</strong><span>Prestations configurées par le garage</span><span>Créneaux disponibles en ligne</span><span>Paiement selon les conditions du garage</span>'
     : '<strong>Fiche publique vérifiée</strong><span>SIRET et établissement contrôlés</span><span>Prestations issues du site officiel</span><span>Tarifs à confirmer auprès du garage</span>';
 
@@ -1556,6 +1558,10 @@ function bindEvents(): void {
           `Réservation confirmée. Acompte test : ${formatPrice(payment.amount)}.`,
           "success",
         );
+        await navigateTo(dashboardPath());
+      } else if (payment.mode === "pay-at-garage") {
+        element<HTMLDialogElement>("booking-dialog").close();
+        showMessage("Réservation confirmée, règlement au garage.", "success");
         await navigateTo(dashboardPath());
       } else if (payment.checkout_url) {
         window.location.href = payment.checkout_url;
