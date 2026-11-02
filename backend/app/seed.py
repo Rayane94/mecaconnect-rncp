@@ -577,7 +577,7 @@ def ensure_demo_garage(db, garage_user: User) -> Garage:
     showcase_active = bool(os.getenv("RAILWAY_ENVIRONMENT")) and datetime.now(timezone.utc) < showcase_ends
     demo_public = showcase_active or os.getenv("MECACONNECT_DEMO_PUBLIC", "false").lower() in {"1", "true", "yes"}
     demo_status = "DEMO_PUBLIC" if demo_public else "DEMO_HIDDEN"
-    stripe_test_ready = os.getenv("STRIPE_SECRET_KEY", "").startswith("sk_test_")
+    stripe_test_ready = not os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("STRIPE_SECRET_KEY", "").startswith("sk_test_")
 
     garage = db.scalar(select(Garage).where(Garage.slug == DEMO_GARAGE["slug"]))
     if not garage:
