@@ -571,8 +571,14 @@ def upsert_real_garage(db, data: dict) -> Garage:
 
 def ensure_demo_garage(db, garage_user: User) -> Garage:
     # L'atelier fictif peut être temporairement publié pour une démonstration.
-    demo_public = os.getenv("MECACONNECT_DEMO_PUBLIC", "false").lower() in {"1", "true", "yes"}
+    # Galerie de soutenance temporaire : le seul atelier fictif réservable.
+    # Aucune fiche de tiers n'est transformée en partenaire ou en offre à réserver.
+    showcase_ends = datetime(2026, 11, 5, 0, 0, tzinfo=timezone.utc)
+    showcase_active = bool(os.getenv("RAILWAY_ENVIRONMENT")) and datetime.now(timezone.utc) < showcase_ends
+    demo_public = showcase_active or os.getenv("MECACONNECT_DEMO_PUBLIC", "false").lower() in {"1", "true", "yes"}
     demo_status = "DEMO_PUBLIC" if demo_public else "DEMO_HIDDEN"
+    stripe_test_ready = not os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("STRIPE_SECRET_KEY", "").startswith("sk_test_")
+
     garage = db.scalar(select(Garage).where(Garage.slug == DEMO_GARAGE["slug"]))
     if not garage:
         garage = Garage(
@@ -580,7 +586,7 @@ def ensure_demo_garage(db, garage_user: User) -> Garage:
             verified=True,
             listing_status=demo_status,
             booking_enabled=True,
-            payment_online_enabled=True,
+            payment_online_enabled=stripe_test_ready,
             deposit_rate=0.20,
             is_public=demo_public,
             rating=0.0,
@@ -594,7 +600,7 @@ def ensure_demo_garage(db, garage_user: User) -> Garage:
         garage.is_public = demo_public
         garage.booking_enabled = True
         garage.listing_status = demo_status
-        garage.payment_online_enabled = True
+        garage.payment_online_enabled = stripe_test_ready
         db.flush()
 
     if not garage.services:
